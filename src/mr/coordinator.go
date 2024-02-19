@@ -74,6 +74,7 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 		}
 		reply.JobId = 0
 		reply.JobLoad = "Reduce"
+		return nil
 	}
 	for i, flag := range c.mapState {
 		if flag == UNSTARTED {
