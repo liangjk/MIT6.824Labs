@@ -15,6 +15,7 @@ const (
 	UNSTARTED = 0
 	DONE      = -1
 	CRASHINT  = 10
+	MAPWAIT   = 1
 )
 
 type Coordinator struct {
@@ -65,11 +66,10 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 		for i, flag := range c.reduceState {
 			if flag != DONE {
 				now := int(time.Now().Unix())
-				spentTime := now - c.reduceState[i]
-				if spentTime < CRASHINT {
-					t := CRASHINT - spentTime
-					if t < waitTime {
-						waitTime = t
+				tmptime := c.reduceState[i] + CRASHINT - now
+				if tmptime > 0 {
+					if tmptime < waitTime {
+						waitTime = tmptime
 					}
 					continue
 				}
@@ -92,16 +92,10 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 			return nil
 		}
 	}
-	waitTime := CRASHINT
 	for i, flag := range c.mapState {
 		if flag != DONE {
 			now := int(time.Now().Unix())
-			spentTime := now - c.mapState[i]
-			if spentTime < CRASHINT {
-				t := CRASHINT - spentTime
-				if t < waitTime {
-					waitTime = t
-				}
+			if now-c.mapState[i] < CRASHINT {
 				continue
 			}
 			c.mapState[i] = now
@@ -112,7 +106,7 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 		}
 	}
 	reply.JobId = 0
-	reply.JobLoad = strconv.Itoa(waitTime)
+	reply.JobLoad = strconv.Itoa(MAPWAIT)
 	return nil
 }
 
@@ -144,6 +138,7 @@ func (c *Coordinator) Done() bool {
 	c.mutex.Lock()
 	if c.mapCount == 0 && c.reduceCount == 0 {
 		ret = true
+		defer log.Println("Coordinator done")
 	}
 	c.mutex.Unlock()
 
