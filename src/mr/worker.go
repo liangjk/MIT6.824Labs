@@ -83,20 +83,17 @@ func Worker(mapf func(string, string) []KeyValue,
 			lastJob = 0
 			switch {
 			case reply.JobId == 0:
-				switch reply.JobLoad {
-				case "":
+				if reply.JobLoad == "" {
 					log.Println("Received no job reply")
 					return
-				case "Map":
-					log.Println("Received wait map reply")
-					time.Sleep(time.Second)
-				case "Reduce":
-					log.Println("Received wait reduce reply")
-					time.Sleep(time.Second * CRASHINT)
-				default:
-					log.Fatalf("Received unknown wait reply: %v", reply.JobLoad)
+				}
+				waitTime, err := strconv.Atoi(reply.JobLoad)
+				if err != nil {
+					log.Fatalf("Received unknown wait reply %v", reply.JobLoad)
 					return
 				}
+				log.Printf("Received wait reply: %vs", waitTime)
+				time.Sleep(time.Second * time.Duration(waitTime))
 			case reply.JobId < 0:
 				log.Println("Start map job", -reply.JobId-1)
 				file, err := os.Open(reply.JobLoad)

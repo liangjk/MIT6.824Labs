@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -60,10 +61,16 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 				return nil
 			}
 		}
+		waitTime := CRASHINT
 		for i, flag := range c.reduceState {
 			if flag != DONE {
 				now := int(time.Now().Unix())
-				if now-c.reduceState[i] < CRASHINT {
+				spentTime := now - c.reduceState[i]
+				if spentTime < CRASHINT {
+					t := CRASHINT - spentTime
+					if t < waitTime {
+						waitTime = t
+					}
 					continue
 				}
 				c.reduceState[i] = now
@@ -73,7 +80,7 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 			}
 		}
 		reply.JobId = 0
-		reply.JobLoad = "Reduce"
+		reply.JobLoad = strconv.Itoa(waitTime)
 		return nil
 	}
 	for i, flag := range c.mapState {
@@ -85,10 +92,16 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 			return nil
 		}
 	}
+	waitTime := CRASHINT
 	for i, flag := range c.mapState {
 		if flag != DONE {
 			now := int(time.Now().Unix())
-			if now-c.mapState[i] < CRASHINT {
+			spentTime := now - c.mapState[i]
+			if spentTime < CRASHINT {
+				t := CRASHINT - spentTime
+				if t < waitTime {
+					waitTime = t
+				}
 				continue
 			}
 			c.mapState[i] = now
@@ -99,7 +112,7 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 		}
 	}
 	reply.JobId = 0
-	reply.JobLoad = "Map"
+	reply.JobLoad = strconv.Itoa(waitTime)
 	return nil
 }
 
