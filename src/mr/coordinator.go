@@ -7,12 +7,13 @@ import (
 	"net/rpc"
 	"os"
 	"sync"
+	"time"
 )
 
 const (
 	UNSTARTED = 0
-	STARTED   = 1
-	DONE      = 2
+	DONE      = -1
+	CRASHINT  = 10
 )
 
 type Coordinator struct {
@@ -53,24 +54,30 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 		}
 		for i, flag := range c.reduceState {
 			if flag == UNSTARTED {
-				c.reduceState[i] = STARTED
+				c.reduceState[i] = int(time.Now().Unix())
 				reply.JobId = i + 1
 				reply.JobCount = len(c.mapState)
 				return nil
 			}
 		}
 		for i, flag := range c.reduceState {
-			if flag == STARTED {
+			if flag != DONE {
+				now := int(time.Now().Unix())
+				if now-c.reduceState[i] < CRASHINT {
+					continue
+				}
+				c.reduceState[i] = now
 				reply.JobId = i + 1
 				reply.JobCount = len(c.mapState)
 				return nil
 			}
 		}
-		log.Fatal("Cannot find a reduce job!")
+		reply.JobId = 0
+		reply.JobLoad = "Reduce"
 	}
 	for i, flag := range c.mapState {
 		if flag == UNSTARTED {
-			c.mapState[i] = STARTED
+			c.mapState[i] = int(time.Now().Unix())
 			reply.JobId = -(i + 1)
 			reply.JobCount = len(c.reduceState)
 			reply.JobLoad = c.files[i]
@@ -78,14 +85,20 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 		}
 	}
 	for i, flag := range c.mapState {
-		if flag == STARTED {
+		if flag != DONE {
+			now := int(time.Now().Unix())
+			if now-c.mapState[i] < CRASHINT {
+				continue
+			}
+			c.mapState[i] = now
 			reply.JobId = -(i + 1)
 			reply.JobCount = len(c.reduceState)
 			reply.JobLoad = c.files[i]
 			return nil
 		}
 	}
-	log.Fatal("Cannot find a map job!")
+	reply.JobId = 0
+	reply.JobLoad = "Map"
 	return nil
 }
 

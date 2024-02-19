@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"time"
 )
 
 //
@@ -81,8 +82,20 @@ func Worker(mapf func(string, string) []KeyValue,
 			lastJob = reply.JobId
 			switch {
 			case reply.JobId == 0:
-				log.Println("Received no job reply")
-				return
+				switch reply.JobLoad {
+				case "":
+					log.Println("Received no job reply")
+					return
+				case "Map":
+					log.Println("Received wait map reply")
+					time.Sleep(time.Second)
+				case "Reduce":
+					log.Println("Received wait reduce reply")
+					time.Sleep(time.Second * CRASHINT)
+				default:
+					log.Fatalf("Received unknown wait reply: %v", reply.JobLoad)
+					return
+				}
 			case reply.JobId < 0:
 				log.Println("Start map job", -reply.JobId-1)
 				file, err := os.Open(reply.JobLoad)
