@@ -11,7 +11,6 @@ import (
 	"os"
 	"sort"
 	"strconv"
-	"sync"
 	"time"
 )
 
@@ -41,12 +40,12 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
-func saveMapResult(mapid, reduceid int, kvs []KeyValue, wg *sync.WaitGroup) {
-	defer wg.Done()
+func saveMapResult(mapid, reduceid int, kvs []KeyValue, ch chan bool) {
 	tmpname := "mr-map-" + strconv.Itoa(mapid) + "-" + strconv.Itoa(reduceid)
 	outfile, err := ioutil.TempFile(".", tmpname+"*.json")
 	if err != nil {
 		log.Printf("cannot open temp file %v", tmpname)
+		ch <- false
 		return
 	}
 	enc := json.NewEncoder(outfile)
@@ -55,6 +54,7 @@ func saveMapResult(mapid, reduceid int, kvs []KeyValue, wg *sync.WaitGroup) {
 		if err != nil {
 			log.Printf("cannot encode %v", tmpname)
 			outfile.Close()
+			ch <- false
 			return
 		}
 	}
@@ -64,6 +64,7 @@ func saveMapResult(mapid, reduceid int, kvs []KeyValue, wg *sync.WaitGroup) {
 	if err != nil {
 		os.Remove(outfile.Name())
 	}
+	ch <- true
 }
 
 //
@@ -79,7 +80,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		reply := MrRpcReply{}
 		ok := call("Coordinator.RequestJob", &args, &reply)
 		if ok {
-			lastJob = reply.JobId
+			lastJob = 0
 			switch {
 			case reply.JobId == 0:
 				switch reply.JobLoad {
@@ -116,21 +117,28 @@ func Worker(mapf func(string, string) []KeyValue,
 					hash := ihash(kv.Key) % reply.JobCount
 					kvsplit[hash] = append(kvsplit[hash], kv)
 				}
-				var wg sync.WaitGroup
+				ch := make(chan bool)
 				for i := 0; i < reply.JobCount; i++ {
-					wg.Add(1)
-					go saveMapResult(-reply.JobId, i+1, kvsplit[i], &wg)
+					go saveMapResult(-reply.JobId, i+1, kvsplit[i], ch)
 				}
-				wg.Wait()
+				writeComplete := true
+				for i := 0; i < reply.JobCount; i++ {
+					writeComplete = writeComplete && <-ch
+				}
+				if writeComplete {
+					lastJob = reply.JobId
+				}
 			case reply.JobId > 0:
 				log.Println("Start reduce job", reply.JobId-1)
 				var kva []KeyValue
+				readComplete := true
 				for i := 0; i < reply.JobCount; i++ {
 					filename := "mr-map-" + strconv.Itoa(i+1) + "-" + strconv.Itoa(reply.JobId) + ".json"
 					file, err := os.Open(filename)
 					if err != nil {
 						log.Printf("cannot open %v", filename)
-						continue
+						readComplete = false
+						break
 					}
 					dec := json.NewDecoder(file)
 					for {
@@ -141,6 +149,9 @@ func Worker(mapf func(string, string) []KeyValue,
 						kva = append(kva, kv)
 					}
 					file.Close()
+				}
+				if !readComplete {
+					continue
 				}
 				tmpname := "mr-out-" + strconv.Itoa(reply.JobId)
 				ofile, err := ioutil.TempFile(".", tmpname+"*.txt")
@@ -165,9 +176,10 @@ func Worker(mapf func(string, string) []KeyValue,
 				if err != nil {
 					os.Remove(ofile.Name())
 				}
+				lastJob = reply.JobId
 			}
 		} else {
-			break
+			return
 		}
 	}
 }
