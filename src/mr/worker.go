@@ -128,7 +128,6 @@ func Worker(mapf func(string, string) []KeyValue,
 						kva = append(kva, kv)
 					}
 					file.Close()
-					os.Remove(file.Name())
 				}
 				tmpname := "mr-out-" + strconv.Itoa(reply.JobId)
 				ofile, err := ioutil.TempFile(".", tmpname+"*.txt")
