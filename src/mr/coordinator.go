@@ -33,13 +33,17 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 	switch {
 	case args.JobId < 0:
 		x := -args.JobId - 1
-		c.mapState[x] = DONE
-		c.mapCount--
+		if c.mapState[x] != DONE {
+			c.mapState[x] = DONE
+			c.mapCount--
+		}
 		log.Println("Finish map job", x)
 	case args.JobId > 0:
 		x := args.JobId - 1
-		c.reduceState[x] = DONE
-		c.reduceCount--
+		if c.reduceState[x] != DONE {
+			c.reduceState[x] = DONE
+			c.reduceCount--
+		}
 		log.Println("Finish reduce job", x)
 	}
 	if c.mapCount == 0 {
