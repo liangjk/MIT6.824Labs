@@ -1,29 +1,89 @@
 package mr
 
-import "log"
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
+import (
+	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
+	"sync"
+)
 
+const (
+	UNSTARTED = 0
+	STARTED   = 1
+	DONE      = 2
+)
 
 type Coordinator struct {
 	// Your definitions here.
-
+	files                 []string
+	mapState, reduceState []int
+	mapCount, reduceCount int
+	mutex                 sync.Mutex
 }
 
+//
 // Your code here -- RPC handlers for the worker to call.
-
-//
-// an example RPC handler.
-//
 // the RPC argument and reply types are defined in rpc.go.
 //
-func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
-	reply.Y = args.X + 1
+func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	switch {
+	case args.JobId < 0:
+		x := -args.JobId - 1
+		c.mapState[x] = DONE
+		c.mapCount--
+		log.Println("Finish map job", x)
+	case args.JobId > 0:
+		x := args.JobId - 1
+		c.reduceState[x] = DONE
+		c.reduceCount--
+		log.Println("Finish reduce job", x)
+	}
+	if c.mapCount == 0 {
+		if c.reduceCount == 0 {
+			reply.JobId = 0
+			return nil
+		}
+		for i, flag := range c.reduceState {
+			if flag == UNSTARTED {
+				c.reduceState[i] = STARTED
+				reply.JobId = i + 1
+				reply.JobCount = len(c.mapState)
+				return nil
+			}
+		}
+		for i, flag := range c.reduceState {
+			if flag == STARTED {
+				reply.JobId = i + 1
+				reply.JobCount = len(c.mapState)
+				return nil
+			}
+		}
+		log.Fatal("Cannot find a reduce job!")
+	}
+	for i, flag := range c.mapState {
+		if flag == UNSTARTED {
+			c.mapState[i] = STARTED
+			reply.JobId = -(i + 1)
+			reply.JobCount = len(c.reduceState)
+			reply.JobLoad = c.files[i]
+			return nil
+		}
+	}
+	for i, flag := range c.mapState {
+		if flag == STARTED {
+			reply.JobId = -(i + 1)
+			reply.JobCount = len(c.reduceState)
+			reply.JobLoad = c.files[i]
+			return nil
+		}
+	}
+	log.Fatal("Cannot find a map job!")
 	return nil
 }
-
 
 //
 // start a thread that listens for RPCs from worker.go
@@ -46,10 +106,15 @@ func (c *Coordinator) server() {
 // if the entire job has finished.
 //
 func (c *Coordinator) Done() bool {
+	// log.Println("Coordinator Done() called")
 	ret := false
 
 	// Your code here.
-
+	c.mutex.Lock()
+	if c.mapCount == 0 && c.reduceCount == 0 {
+		ret = true
+	}
+	c.mutex.Unlock()
 
 	return ret
 }
@@ -60,11 +125,13 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{}
-
-	// Your code here.
-
+	c := Coordinator{files: files, reduceCount: nReduce}
+	len := len(files)
+	c.mapState = make([]int, len)
+	c.reduceState = make([]int, nReduce)
+	c.mapCount = len
 
 	c.server()
+	log.Println("Coordinator server started")
 	return &c
 }
