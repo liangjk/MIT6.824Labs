@@ -33,8 +33,8 @@ type KVServer struct {
 	// Your definitions here.
 	data map[string]string
 	// logs []Log
-	seq map[int64]int64
-	val map[int64]string
+	seq map[int]int64
+	val map[int]string
 }
 
 // func (kv *KVServer) cleanLog() {
@@ -126,8 +126,8 @@ func StartKVServer() *KVServer {
 	kv.data = make(map[string]string)
 	// kv.logs = make([]Log, 0)
 
-	kv.seq = make(map[int64]int64)
-	kv.val = make(map[int64]string)
+	kv.seq = make(map[int]int64)
+	kv.val = make(map[int]string)
 
 	return kv
 }

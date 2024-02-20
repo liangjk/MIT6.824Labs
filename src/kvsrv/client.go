@@ -3,6 +3,7 @@ package kvsrv
 import (
 	"crypto/rand"
 	"math/big"
+	"sync"
 
 	"6.5840/labrpc"
 )
@@ -10,7 +11,7 @@ import (
 type Clerk struct {
 	server *labrpc.ClientEnd
 	// You will have to modify this struct.
-	clientNo int64
+	clientNo int
 }
 
 func nrand() int64 {
@@ -20,11 +21,19 @@ func nrand() int64 {
 	return x
 }
 
+var (
+	clientId int
+	idMutex  sync.Mutex
+)
+
 func MakeClerk(server *labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.server = server
 	// You'll have to add code here.
-	ck.clientNo = nrand()
+	idMutex.Lock()
+	ck.clientNo = clientId
+	clientId++
+	idMutex.Unlock()
 	return ck
 }
 
