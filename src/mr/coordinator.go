@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -24,6 +23,30 @@ type Coordinator struct {
 	mapState, reduceState []int
 	mapCount, reduceCount int
 	mutex                 sync.Mutex
+	cond                  *sync.Cond
+	waitCh                chan int
+}
+
+func (c *Coordinator) wake() {
+	for {
+		t := <-c.waitCh
+		log.Printf("Sleep for %vs", t)
+		time.Sleep(time.Second * time.Duration(t))
+		for {
+			var noWait bool
+			select {
+			case t = <-c.waitCh:
+				noWait = false
+				log.Println("Clean extra sleep", t)
+			default:
+				noWait = true
+			}
+			if noWait {
+				break
+			}
+		}
+		c.cond.Broadcast()
+	}
 }
 
 //
@@ -49,65 +72,71 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 		}
 		log.Println("Finish reduce job", x)
 	}
-	if c.mapCount == 0 {
-		if c.reduceCount == 0 {
-			reply.JobId = 0
-			return nil
-		}
-		for i, flag := range c.reduceState {
-			if flag == UNSTARTED {
-				c.reduceState[i] = int(time.Now().Unix())
-				reply.JobId = i + 1
-				reply.JobCount = len(c.mapState)
+	c.cond.Broadcast()
+	for {
+		if c.mapCount == 0 {
+			if c.reduceCount == 0 {
+				reply.JobId = 0
 				return nil
 			}
-		}
-		waitTime := CRASHINT
-		for i, flag := range c.reduceState {
-			if flag != DONE {
-				now := int(time.Now().Unix())
-				tmptime := c.reduceState[i] + CRASHINT - now
-				if tmptime > 0 {
-					if tmptime < waitTime {
-						waitTime = tmptime
-					}
-					continue
+			for i, flag := range c.reduceState {
+				if flag == UNSTARTED {
+					c.reduceState[i] = int(time.Now().Unix())
+					reply.JobId = i + 1
+					reply.JobCount = len(c.mapState)
+					return nil
 				}
-				c.reduceState[i] = now
-				reply.JobId = i + 1
-				reply.JobCount = len(c.mapState)
-				return nil
 			}
-		}
-		reply.JobId = 0
-		reply.JobLoad = strconv.Itoa(waitTime)
-		return nil
-	}
-	for i, flag := range c.mapState {
-		if flag == UNSTARTED {
-			c.mapState[i] = int(time.Now().Unix())
-			reply.JobId = -(i + 1)
-			reply.JobCount = len(c.reduceState)
-			reply.JobLoad = c.files[i]
-			return nil
-		}
-	}
-	for i, flag := range c.mapState {
-		if flag != DONE {
-			now := int(time.Now().Unix())
-			if now-c.mapState[i] < CRASHINT {
-				continue
+			waitTime := CRASHINT
+			for i, flag := range c.reduceState {
+				if flag != DONE {
+					now := int(time.Now().Unix())
+					tmptime := c.reduceState[i] + CRASHINT - now
+					if tmptime > 0 {
+						if tmptime < waitTime {
+							waitTime = tmptime
+						}
+						continue
+					}
+					c.reduceState[i] = now
+					reply.JobId = i + 1
+					reply.JobCount = len(c.mapState)
+					return nil
+				}
 			}
-			c.mapState[i] = now
-			reply.JobId = -(i + 1)
-			reply.JobCount = len(c.reduceState)
-			reply.JobLoad = c.files[i]
-			return nil
+			go func() {
+				c.waitCh <- waitTime
+			}()
+			c.cond.Wait()
+		} else {
+			for i, flag := range c.mapState {
+				if flag == UNSTARTED {
+					c.mapState[i] = int(time.Now().Unix())
+					reply.JobId = -(i + 1)
+					reply.JobCount = len(c.reduceState)
+					reply.JobLoad = c.files[i]
+					return nil
+				}
+			}
+			for i, flag := range c.mapState {
+				if flag != DONE {
+					now := int(time.Now().Unix())
+					if now-c.mapState[i] < CRASHINT {
+						continue
+					}
+					c.mapState[i] = now
+					reply.JobId = -(i + 1)
+					reply.JobCount = len(c.reduceState)
+					reply.JobLoad = c.files[i]
+					return nil
+				}
+			}
+			go func() {
+				c.waitCh <- MAPWAIT
+			}()
+			c.cond.Wait()
 		}
 	}
-	reply.JobId = 0
-	reply.JobLoad = strconv.Itoa(MAPWAIT)
-	return nil
 }
 
 //
@@ -156,6 +185,9 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c.mapState = make([]int, len)
 	c.reduceState = make([]int, nReduce)
 	c.mapCount = len
+	c.cond = sync.NewCond(&c.mutex)
+	c.waitCh = make(chan int)
+	go c.wake()
 
 	c.server()
 	log.Println("Coordinator server started")

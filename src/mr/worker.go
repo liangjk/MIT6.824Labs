@@ -11,7 +11,6 @@ import (
 	"os"
 	"sort"
 	"strconv"
-	"time"
 )
 
 //
@@ -83,17 +82,8 @@ func Worker(mapf func(string, string) []KeyValue,
 			lastJob = 0
 			switch {
 			case reply.JobId == 0:
-				if reply.JobLoad == "" {
-					log.Println("Received no job reply")
-					return
-				}
-				waitTime, err := strconv.Atoi(reply.JobLoad)
-				if err != nil {
-					log.Fatalf("Received unknown wait reply %v", reply.JobLoad)
-					return
-				}
-				log.Printf("Received wait reply: %vs", waitTime)
-				time.Sleep(time.Second * time.Duration(waitTime))
+				log.Println("Received no job reply")
+				return
 			case reply.JobId < 0:
 				log.Println("Start map job", -reply.JobId-1)
 				file, err := os.Open(reply.JobLoad)
@@ -176,7 +166,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				lastJob = reply.JobId
 			}
 		} else {
-			return
+			log.Println("RPC failed")
 		}
 	}
 }
