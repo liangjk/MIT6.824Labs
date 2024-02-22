@@ -32,20 +32,16 @@ func (c *Coordinator) wake() {
 		t := <-c.waitCh
 		log.Printf("Sleep for %vs", t)
 		time.Sleep(time.Second * time.Duration(t))
-		for {
-			var noWait bool
-			select {
-			case t = <-c.waitCh:
-				noWait = false
-				log.Println("Clean extra sleep", t)
-			default:
-				noWait = true
-			}
-			if noWait {
-				break
-			}
-		}
 		c.cond.Signal()
+	}
+}
+
+func (c *Coordinator) wait(interval int) {
+	time.Sleep(time.Millisecond)
+	select {
+	case c.waitCh <- interval:
+	default:
+		log.Println("Already waiting")
 	}
 }
 
@@ -54,9 +50,9 @@ func (c *Coordinator) wake() {
 // the RPC argument and reply types are defined in rpc.go.
 //
 func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
+	defer c.cond.Signal()
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	defer c.cond.Signal()
 	switch {
 	case args.JobId < 0:
 		x := -args.JobId - 1
@@ -104,9 +100,7 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 					return nil
 				}
 			}
-			go func() {
-				c.waitCh <- waitTime
-			}()
+			go c.wait(waitTime)
 			c.cond.Wait()
 		} else {
 			for i, flag := range c.mapState {
@@ -131,9 +125,7 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 					return nil
 				}
 			}
-			go func() {
-				c.waitCh <- MAPWAIT
-			}()
+			go c.wait(MAPWAIT)
 			c.cond.Wait()
 		}
 	}
