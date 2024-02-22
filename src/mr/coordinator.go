@@ -45,7 +45,7 @@ func (c *Coordinator) wake() {
 				break
 			}
 		}
-		c.cond.Broadcast()
+		c.cond.Signal()
 	}
 }
 
@@ -56,6 +56,7 @@ func (c *Coordinator) wake() {
 func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+	defer c.cond.Signal()
 	switch {
 	case args.JobId < 0:
 		x := -args.JobId - 1
@@ -72,7 +73,6 @@ func (c *Coordinator) RequestJob(args *MrRpcArgs, reply *MrRpcReply) error {
 		}
 		log.Println("Finish reduce job", x)
 	}
-	c.cond.Broadcast()
 	for {
 		if c.mapCount == 0 {
 			if c.reduceCount == 0 {
