@@ -178,7 +178,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	if rf.currentTerm > args.Term {
-		DPrintf("%v didn't vote for %v because current term: %v, request term %v", rf.me, args.CandidateId, rf.currentTerm, args.Term)
 		reply.Term = rf.currentTerm
 		reply.Granted = false
 		return
@@ -188,7 +187,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.votedFor = -1
 		rf.state = Follower
 	} else if rf.votedFor != args.CandidateId && rf.votedFor != -1 {
-		DPrintf("%v didn't vote for %v because has vote for %v in term %v", rf.me, args.CandidateId, rf.votedFor, args.Term)
 		reply.Term = rf.currentTerm
 		reply.Granted = false
 		return
@@ -196,14 +194,12 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.Term = rf.currentTerm
 	lastLogTerm, lastLogIndex := rf.getLastLog()
 	if args.LastLogTerm < lastLogTerm || args.LastLogTerm == lastLogTerm && args.LastLogIndex < lastLogIndex {
-		DPrintf("??????????????")
 		reply.Granted = false
 		return
 	}
 	rf.votedFor = args.CandidateId
 	reply.Granted = true
 	rf.persist()
-	DPrintf("%v Vote: %v in Term %v", rf.me, args.CandidateId, rf.currentTerm)
 }
 
 type AppendEntriesArgs struct {
@@ -221,7 +217,6 @@ type AppendEntriesReply struct {
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	DPrintf("AppendEntries %v Term %v", rf.me, args.Term)
 	if args.Term < rf.currentTerm {
 		reply.Term = rf.currentTerm
 		reply.Success = false
@@ -371,7 +366,6 @@ func (rf *Raft) startElection() {
 	}
 
 	for i := 0; i < numServers-1; i++ {
-		DPrintf("Server %v in election with votes %v", rf.me, votes)
 		res := <-results
 		if res == Success {
 			votes++
@@ -470,8 +464,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// start ticker goroutine to start elections
 	go rf.ticker()
-
-	DPrintf("Make %v", rf.me)
 
 	return rf
 }
