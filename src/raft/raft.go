@@ -82,8 +82,6 @@ type Raft struct {
 	logs []Log
 
 	missedHeartbeat int32
-
-	sending []int32
 }
 
 // return currentTerm and whether this server
@@ -257,10 +255,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 }
 
 func (rf *Raft) sendLog(peer, term int) {
-	if !atomic.CompareAndSwapInt32(&rf.sending[peer], 0, 1) {
-		return
-	}
-	defer atomic.StoreInt32(&rf.sending[peer], 0)
 	rf.mu.Lock()
 	if rf.state != Leader || rf.currentTerm != term {
 		rf.mu.Unlock()
@@ -455,7 +449,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	numPeers := len(peers)
 	rf.nextIndex = make([]int, numPeers)
 	rf.matchIndex = make([]int, numPeers)
-	rf.sending = make([]int32, numPeers)
 	rf.logs = make([]Log, 1)
 
 	rf.votedFor = -1
