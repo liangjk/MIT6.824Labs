@@ -54,7 +54,7 @@ const (
 	Candidate         = 1
 	Leader            = 2
 	ElectionThreshold = 5
-	HeartbeatRate     = 200
+	HeartbeatRate     = 300
 )
 
 type Log struct {
@@ -83,6 +83,7 @@ type Raft struct {
 	logs []Log
 
 	missedHeartbeat int32
+	lastMsg         int64
 
 	applyCh               chan ApplyMsg
 	commitCond, applyCond *sync.Cond
@@ -280,6 +281,7 @@ func (rf *Raft) Start(command interface{}) (index int, term int, isLeader bool) 
 	index = len(rf.logs)
 	isLeader = true
 	rf.logs = append(rf.logs, Log{term, command})
+	rf.lastMsg = time.Now().UnixMilli()
 	for i := range rf.peers {
 		if i != rf.me {
 			go rf.sendLog(i, term)
@@ -359,10 +361,14 @@ func (rf *Raft) heartbeat(term int) {
 			rf.mu.Unlock()
 			return
 		}
+		since := time.Now().UnixMilli() - rf.lastMsg
 		rf.mu.Unlock()
-		for i := range rf.peers {
-			if i != rf.me {
-				go rf.sendLog(i, term)
+		atomic.StoreInt32(&rf.missedHeartbeat, 0)
+		if since*2 > HeartbeatRate {
+			for i := range rf.peers {
+				if i != rf.me {
+					go rf.sendLog(i, term)
+				}
 			}
 		}
 		time.Sleep(time.Millisecond * HeartbeatRate)
