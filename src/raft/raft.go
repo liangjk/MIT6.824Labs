@@ -609,8 +609,8 @@ func (rf *Raft) startElection() {
 	}
 
 	if elected {
-		DPrintf("Server %v won election in term: %v", rf.me, rf.currentTerm)
 		rf.mu.Lock()
+		DPrintf("Server %v won election in term: %v", rf.me, rf.currentTerm)
 		if rf.currentTerm == args.Term && rf.state == Candidate {
 			rf.state = Leader
 			for i := range rf.peers {
