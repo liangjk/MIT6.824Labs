@@ -243,8 +243,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	if args.Term > rf.currentTerm {
 		rf.currentTerm = args.Term
 		rf.votedFor = -1
-	} else {
-		Assert(rf.state != Leader, "Leader received AppendEntries in same term!!! Server: %v Term: %v", rf.me, rf.currentTerm)
 	}
 	reply.Term = rf.currentTerm
 	rf.state = Follower
@@ -329,7 +327,6 @@ func (rf *Raft) Start(command interface{}) (index int, term int, isLeader bool) 
 			go rf.sendLog(i, term)
 		}
 	}
-	// DPrintf("Leader %v start command %v at index %v", rf.me, command, index)
 	return
 }
 
@@ -345,7 +342,6 @@ func (rf *Raft) apply() {
 				rf.applyCh <- msg
 				rf.mu.Lock()
 			}
-			// DPrintf("Server %v apply msg %v", rf.me, rf.lastApplied)
 			rf.lastApplied++
 		}
 		rf.applyCond.Wait()
@@ -479,7 +475,6 @@ func (rf *Raft) startElection() {
 		return
 	}
 	rf.currentTerm++
-	// DPrintf("Election %v Term %v", rf.me, rf.currentTerm)
 	rf.votedFor = rf.me
 	rf.state = Candidate
 	lastLogTerm, lastLogIndex := rf.getLastLog()
