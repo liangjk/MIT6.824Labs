@@ -58,7 +58,8 @@ const (
 )
 
 type Log struct {
-	Term int
+	Term    int
+	Command interface{}
 }
 
 // A Go object implementing a single Raft peer.
@@ -82,6 +83,9 @@ type Raft struct {
 	logs []Log
 
 	missedHeartbeat int32
+
+	applyCh               chan ApplyMsg
+	commitCond, applyCond *sync.Cond
 }
 
 // return currentTerm and whether this server
@@ -208,8 +212,9 @@ type AppendEntriesArgs struct {
 }
 
 type AppendEntriesReply struct {
-	Term    int
-	Success bool
+	Term                     int
+	Success                  bool
+	ConfilctTerm, StartIndex int
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
@@ -229,6 +234,24 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	reply.Term = rf.currentTerm
 	rf.state = Follower
 	atomic.StoreInt32(&rf.missedHeartbeat, 0)
+	if args.PrevLogIndex >= len(rf.logs) || rf.logs[args.PrevLogIndex].Term != args.PrevLogTerm {
+		reply.Success = false
+		return
+	}
+	var argsIndex int
+	myIndex := args.PrevLogIndex + 1
+	for argsIndex = 0; argsIndex < len(args.Entries); argsIndex++ {
+		if myIndex >= len(rf.logs) || rf.logs[myIndex].Term != args.Entries[argsIndex].Term {
+			break
+		}
+		myIndex++
+	}
+	rf.logs = append(rf.logs[:myIndex], args.Entries[argsIndex:]...)
+	rf.persist()
+	if args.LeaderCommit > rf.commitIndex {
+		rf.commitIndex = args.LeaderCommit
+		rf.applyCond.Signal()
+	}
 	reply.Success = true
 }
 
@@ -244,14 +267,46 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 // if it's ever committed. the second return value is the current
 // term. the third return value is true if this server believes it is
 // the leader.
-func (rf *Raft) Start(command interface{}) (int, int, bool) {
-	index := -1
-	term := -1
-	isLeader := true
-
+func (rf *Raft) Start(command interface{}) (index int, term int, isLeader bool) {
 	// Your code here (3B).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	term = rf.currentTerm
+	if rf.state != Leader {
+		index = -1
+		isLeader = false
+		return
+	}
+	index = len(rf.logs)
+	isLeader = true
+	rf.logs = append(rf.logs, Log{term, command})
+	for i := range rf.peers {
+		if i != rf.me {
+			go rf.sendLog(i, term)
+		}
+	}
+	// DPrintf("Leader %v start command %v at index %v", rf.me, command, index)
+	return
+}
 
-	return index, term, isLeader
+func (rf *Raft) apply() {
+	rf.mu.Lock()
+	for !rf.killed() {
+		for rf.lastApplied < rf.commitIndex {
+			msg := ApplyMsg{CommandValid: true, Command: rf.logs[rf.lastApplied].Command, CommandIndex: rf.lastApplied}
+			select {
+			case rf.applyCh <- msg:
+			default:
+				rf.mu.Unlock()
+				rf.applyCh <- msg
+				rf.mu.Lock()
+			}
+			// DPrintf("Server %v apply msg %v", rf.me, rf.lastApplied)
+			rf.lastApplied++
+		}
+		rf.applyCond.Wait()
+	}
+	rf.mu.Unlock()
 }
 
 func (rf *Raft) sendLog(peer, term int) {
@@ -271,7 +326,7 @@ func (rf *Raft) sendLog(peer, term int) {
 		ok := peerRpc.Call("Raft.AppendEntries", &args, &reply)
 		if ok {
 			rf.mu.Lock()
-			if rf.state != Leader || rf.currentTerm != term {
+			if rf.state != Leader || rf.currentTerm != term || rf.nextIndex[peer] != args.PrevLogIndex+1 {
 				rf.mu.Unlock()
 				return
 			}
@@ -279,6 +334,7 @@ func (rf *Raft) sendLog(peer, term int) {
 				rf.nextIndex[peer] += len(args.Entries)
 				rf.matchIndex[peer] = rf.nextIndex[peer]
 				rf.mu.Unlock()
+				rf.commitCond.Signal()
 				return
 			}
 			if reply.Term > args.Term {
@@ -301,7 +357,7 @@ func (rf *Raft) heartbeat(term int) {
 		rf.mu.Lock()
 		if rf.state != Leader || rf.currentTerm != term {
 			rf.mu.Unlock()
-			break
+			return
 		}
 		rf.mu.Unlock()
 		for i := range rf.peers {
@@ -313,6 +369,35 @@ func (rf *Raft) heartbeat(term int) {
 	}
 }
 
+func (rf *Raft) checkCommit(term int) {
+	rf.mu.Lock()
+	for !rf.killed() {
+		if rf.state != Leader || rf.currentTerm != term {
+			rf.mu.Unlock()
+			return
+		}
+		for {
+			matched := 1
+			for i := range rf.peers {
+				if rf.matchIndex[i] > rf.commitIndex && i != rf.me {
+					matched++
+					if matched*2 > len(rf.peers) {
+						break
+					}
+				}
+			}
+			if matched*2 > len(rf.peers) {
+				rf.commitIndex++
+				rf.applyCond.Signal()
+			} else {
+				break
+			}
+		}
+		rf.commitCond.Wait()
+	}
+	rf.mu.Unlock()
+}
+
 func (rf *Raft) startElection() {
 	rf.mu.Lock()
 	if rf.state == Leader {
@@ -320,7 +405,7 @@ func (rf *Raft) startElection() {
 		return
 	}
 	rf.currentTerm++
-	DPrintf("Election %v Term %v", rf.me, rf.currentTerm)
+	// DPrintf("Election %v Term %v", rf.me, rf.currentTerm)
 	rf.votedFor = rf.me
 	rf.state = Candidate
 	lastLogTerm, lastLogIndex := rf.getLastLog()
@@ -389,6 +474,7 @@ func (rf *Raft) startElection() {
 				rf.matchIndex[i] = 1
 			}
 			go rf.heartbeat(rf.currentTerm)
+			go rf.checkCommit(rf.currentTerm)
 		}
 		rf.mu.Unlock()
 	}
@@ -444,6 +530,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.peers = peers
 	rf.persister = persister
 	rf.me = me
+	rf.applyCh = applyCh
 
 	// Your initialization code here (3A, 3B, 3C).
 	numPeers := len(peers)
@@ -451,12 +538,20 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.matchIndex = make([]int, numPeers)
 	rf.logs = make([]Log, 1)
 
+	rf.commitIndex = 1
+	rf.lastApplied = 1
+
+	rf.commitCond = sync.NewCond(&rf.mu)
+	rf.applyCond = sync.NewCond(&rf.mu)
+
 	rf.votedFor = -1
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 
 	// start ticker goroutine to start elections
 	go rf.ticker()
+
+	go rf.apply()
 
 	return rf
 }
