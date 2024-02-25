@@ -207,7 +207,7 @@ func (rf *Raft) committer(term int) {
 			return
 		}
 		if newCommit {
-			if rf.testIndex(rf.commitIndex + 1) {
+			if rf.testIndex(rf.commitIndex) {
 				lBound := rf.commitIndex + 1
 				rBound := rf.startIndex + len(rf.logs)
 				for rBound > lBound {
