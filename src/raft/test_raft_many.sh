@@ -1,5 +1,5 @@
 cd ~/MIT6.824/golabs/src/raft/
-for i in {1..20}; do
+for i in {1..200}; do
     for j in {1..80}; do
         echo -n "-"
     done

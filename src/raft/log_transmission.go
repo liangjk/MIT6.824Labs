@@ -93,7 +93,7 @@ func (rf *Raft) sendLog(peer, term int) {
 		rf.mu.Unlock()
 		return
 	}
-	for !rf.killed() {
+	for {
 		if rf.nextIndex[peer] <= rf.startIndex {
 			rf.nextIndex[peer] = rf.startIndex + 1
 			snapshotArgs := InstallSnapshotArgs{rf.currentTerm, rf.startIndex, rf.logs[0].Term, rf.snapshot}
@@ -108,7 +108,7 @@ func (rf *Raft) sendLog(peer, term int) {
 		rf.mu.Unlock()
 		reply := AppendEntriesReply{}
 		ok := rf.peers[peer].Call("Raft.AppendEntries", &args, &reply)
-		if ok {
+		if ok && !rf.killed() {
 			rf.mu.Lock()
 			if rf.currentTerm != term || rf.nextIndex[peer] != tempSave {
 				rf.mu.Unlock()

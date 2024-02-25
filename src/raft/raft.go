@@ -185,6 +185,19 @@ func (rf *Raft) applier() {
 	rf.mu.Unlock()
 }
 
+func (rf *Raft) testIndex(index int) bool {
+	matched := 1
+	for i := range rf.peers {
+		if rf.matchIndex[i] > index && i != rf.me {
+			matched++
+			if matched*2 > len(rf.peers) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (rf *Raft) committer(term int) {
 	rf.mu.Lock()
 	newCommit := false
@@ -194,24 +207,18 @@ func (rf *Raft) committer(term int) {
 			return
 		}
 		if newCommit {
-			oldIndex := rf.commitIndex
-			for {
-				matched := 1
-				for i := range rf.peers {
-					if rf.matchIndex[i] > rf.commitIndex && i != rf.me {
-						matched++
-						if matched*2 > len(rf.peers) {
-							break
-						}
+			if rf.testIndex(rf.commitIndex + 1) {
+				lBound := rf.commitIndex + 1
+				rBound := rf.startIndex + len(rf.logs)
+				for rBound > lBound {
+					mid := (lBound + rBound) >> 1
+					if rf.testIndex(mid) {
+						lBound = mid + 1
+					} else {
+						rBound = mid
 					}
 				}
-				if matched*2 > len(rf.peers) {
-					rf.commitIndex++
-				} else {
-					break
-				}
-			}
-			if rf.commitIndex > oldIndex {
+				rf.commitIndex = lBound
 				rf.applyCond.Signal()
 			}
 			rf.commitCond.Wait()
@@ -246,7 +253,10 @@ func (rf *Raft) committer(term int) {
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
 	// Your code here, if desired.
-	rf.done <- true
+	select {
+	case rf.done <- true:
+	default:
+	}
 	rf.commitCond.Broadcast()
 	rf.applyCond.Broadcast()
 }
