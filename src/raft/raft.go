@@ -82,6 +82,7 @@ type Raft struct {
 	lastMsg         int64
 
 	applyCh               chan ApplyMsg
+	done                  chan bool
 	snapshotApplying      bool
 	commitCond, applyCond *sync.Cond
 	newOp                 int
@@ -152,7 +153,11 @@ func (rf *Raft) applier() {
 			case rf.applyCh <- msg:
 			default:
 				rf.mu.Unlock()
-				rf.applyCh <- msg
+				select {
+				case rf.applyCh <- msg:
+				case <-rf.done:
+					return
+				}
 				rf.mu.Lock()
 			}
 		}
@@ -165,8 +170,12 @@ func (rf *Raft) applier() {
 			}
 			rf.mu.Unlock()
 			for len(batch) > 0 {
-				rf.applyCh <- batch[0]
-				batch = batch[1:]
+				select {
+				case rf.applyCh <- batch[0]:
+					batch = batch[1:]
+				case <-rf.done:
+					return
+				}
 			}
 			rf.mu.Lock()
 		} else {
@@ -237,6 +246,9 @@ func (rf *Raft) committer(term int) {
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
 	// Your code here, if desired.
+	rf.done <- true
+	rf.commitCond.Broadcast()
+	rf.applyCond.Broadcast()
 }
 
 func (rf *Raft) killed() bool {
@@ -271,6 +283,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	rf.commitCond = sync.NewCond(&rf.mu)
 	rf.applyCond = sync.NewCond(&rf.mu)
+
+	rf.done = make(chan bool)
 
 	// initialize from state persisted before a crash
 	if !rf.readPersist(persister.ReadRaftState()) {

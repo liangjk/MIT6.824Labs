@@ -93,7 +93,7 @@ func (rf *Raft) sendLog(peer, term int) {
 		rf.mu.Unlock()
 		return
 	}
-	for {
+	for !rf.killed() {
 		if rf.nextIndex[peer] <= rf.startIndex {
 			rf.nextIndex[peer] = rf.startIndex + 1
 			snapshotArgs := InstallSnapshotArgs{rf.currentTerm, rf.startIndex, rf.logs[0].Term, rf.snapshot}
