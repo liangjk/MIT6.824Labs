@@ -50,6 +50,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 	rf.votedFor = args.CandidateId
 	reply.Granted = true
+	atomic.StoreInt32(&rf.missedHeartbeat, 0)
 	rf.persist()
 }
 
@@ -95,7 +96,7 @@ func (rf *Raft) startElection() {
 			}
 		}()
 	}
-	for i := 0; i < numServers-1; i++ {
+	for i := 1; i < numServers; i++ {
 		res := <-results
 		if res == Success {
 			votes++
@@ -137,8 +138,10 @@ func (rf *Raft) ticker() {
 		// Check if a leader election should be started.
 		if atomic.LoadInt32(&rf.missedHeartbeat) > ElectionThreshold {
 			go rf.startElection()
+			atomic.StoreInt32(&rf.missedHeartbeat, 0)
+		} else {
+			atomic.AddInt32(&rf.missedHeartbeat, 1)
 		}
-		atomic.AddInt32(&rf.missedHeartbeat, 1)
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
 		ms := 50 + (rand.Int63() % 300)

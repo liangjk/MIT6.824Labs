@@ -82,16 +82,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 	if args.LeaderCommit > rf.commitIndex {
 		rf.commitIndex = args.LeaderCommit
-		if rf.snapshotApplying == 0 {
-			rf.applyCond.Signal()
-		}
+		rf.applyCond.Signal()
 	}
 	reply.Success = true
 }
 
 func (rf *Raft) sendLog(peer, term int) {
 	rf.mu.Lock()
-	if rf.state != Leader || rf.currentTerm != term {
+	if rf.currentTerm != term {
 		rf.mu.Unlock()
 		return
 	}
@@ -112,7 +110,7 @@ func (rf *Raft) sendLog(peer, term int) {
 		ok := rf.peers[peer].Call("Raft.AppendEntries", &args, &reply)
 		if ok {
 			rf.mu.Lock()
-			if rf.state != Leader || rf.currentTerm != term || rf.nextIndex[peer] != tempSave {
+			if rf.currentTerm != term || rf.nextIndex[peer] != tempSave {
 				rf.mu.Unlock()
 				return
 			}
@@ -153,7 +151,7 @@ func (rf *Raft) sendLog(peer, term int) {
 func (rf *Raft) heartbeat(term int) {
 	for !rf.killed() {
 		rf.mu.Lock()
-		if rf.state != Leader || rf.currentTerm != term {
+		if rf.currentTerm != term {
 			rf.mu.Unlock()
 			return
 		}

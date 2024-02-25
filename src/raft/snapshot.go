@@ -1,5 +1,7 @@
 package raft
 
+import "sync/atomic"
+
 // the service says it has created a snapshot that has
 // all info up to and including index. this means the
 // service no longer needs the log through (and including)
@@ -26,7 +28,7 @@ func (rf *Raft) sendSnapshot(peer, term, mIndex int, args *InstallSnapshotArgs) 
 	if ok {
 		rf.mu.Lock()
 		defer rf.mu.Unlock()
-		if rf.state != Leader || rf.currentTerm != term {
+		if rf.currentTerm != term {
 			return
 		}
 		if reply.Term > term {
@@ -65,6 +67,8 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 		rf.votedFor = -1
 	}
 	reply.Term = rf.currentTerm
+	rf.state = Follower
+	atomic.StoreInt32(&rf.missedHeartbeat, 0)
 	discardIndex := args.LastIndex - rf.startIndex
 	if discardIndex <= 0 {
 		return
@@ -81,14 +85,7 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 		rf.commitIndex = args.LastIndex + 1
 	}
 	rf.lastApplied = args.LastIndex + 1
-	msg := ApplyMsg{SnapshotValid: true, Snapshot: rf.snapshot, SnapshotTerm: args.LastTerm, SnapshotIndex: args.LastIndex}
-	rf.snapshotApplying++
-	go func() {
-		rf.applyCh <- msg
-		rf.mu.Lock()
-		rf.snapshotApplying--
-		rf.mu.Unlock()
-		rf.applyCond.Signal()
-	}()
+	rf.snapshotApplying = true
+	rf.applyCond.Signal()
 	rf.persist()
 }

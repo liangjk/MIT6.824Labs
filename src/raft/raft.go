@@ -82,7 +82,7 @@ type Raft struct {
 	lastMsg         int64
 
 	applyCh               chan ApplyMsg
-	snapshotApplying      int
+	snapshotApplying      bool
 	commitCond, applyCond *sync.Cond
 	newOp                 int
 
@@ -131,7 +131,7 @@ func (rf *Raft) Start(command interface{}) (index int, term int, isLeader bool) 
 	rf.persist()
 	if rf.newOp == 0 {
 		rf.newOp = index
-		go rf.checkCommit(rf.currentTerm)
+		go rf.committer(rf.currentTerm)
 	}
 	rf.lastMsg = time.Now().UnixMilli()
 	for i := range rf.peers {
@@ -142,12 +142,12 @@ func (rf *Raft) Start(command interface{}) (index int, term int, isLeader bool) 
 	return
 }
 
-func (rf *Raft) apply() {
+func (rf *Raft) applier() {
 	rf.mu.Lock()
 	for !rf.killed() {
-		for rf.lastApplied < rf.commitIndex && rf.snapshotApplying == 0 {
-			msg := ApplyMsg{CommandValid: true, Command: rf.logs[rf.lastApplied-rf.startIndex].Command, CommandIndex: rf.lastApplied}
-			rf.lastApplied++
+		if rf.snapshotApplying {
+			msg := ApplyMsg{SnapshotValid: true, Snapshot: rf.snapshot, SnapshotTerm: rf.logs[0].Term, SnapshotIndex: rf.startIndex}
+			rf.snapshotApplying = false
 			select {
 			case rf.applyCh <- msg:
 			default:
@@ -156,20 +156,36 @@ func (rf *Raft) apply() {
 				rf.mu.Lock()
 			}
 		}
-		rf.applyCond.Wait()
+		if rf.lastApplied < rf.commitIndex {
+			var batch []ApplyMsg
+			for rf.lastApplied < rf.commitIndex {
+				msg := ApplyMsg{CommandValid: true, Command: rf.logs[rf.lastApplied-rf.startIndex].Command, CommandIndex: rf.lastApplied}
+				batch = append(batch, msg)
+				rf.lastApplied++
+			}
+			rf.mu.Unlock()
+			for len(batch) > 0 {
+				rf.applyCh <- batch[0]
+				batch = batch[1:]
+			}
+			rf.mu.Lock()
+		} else {
+			rf.applyCond.Wait()
+		}
 	}
 	rf.mu.Unlock()
 }
 
-func (rf *Raft) checkCommit(term int) {
+func (rf *Raft) committer(term int) {
 	rf.mu.Lock()
 	newCommit := false
 	for !rf.killed() {
-		if rf.state != Leader || rf.currentTerm != term {
+		if rf.currentTerm != term {
 			rf.mu.Unlock()
 			return
 		}
 		if newCommit {
+			oldIndex := rf.commitIndex
 			for {
 				matched := 1
 				for i := range rf.peers {
@@ -182,12 +198,12 @@ func (rf *Raft) checkCommit(term int) {
 				}
 				if matched*2 > len(rf.peers) {
 					rf.commitIndex++
-					if rf.snapshotApplying == 0 {
-						rf.applyCond.Signal()
-					}
 				} else {
 					break
 				}
+			}
+			if rf.commitIndex > oldIndex {
+				rf.applyCond.Signal()
 			}
 			rf.commitCond.Wait()
 		} else {
@@ -266,7 +282,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// start ticker goroutine to start elections
 	go rf.ticker()
 
-	go rf.apply()
+	go rf.applier()
 
 	return rf
 }
