@@ -224,20 +224,12 @@ func (rf *Raft) committer(term int) {
 				rf.applyCond.Signal()
 			}
 			rf.commitCond.Wait()
+		} else if rf.testIndexL(rf.newOp) {
+			newCommit = true
+			rf.commitIndex = rf.newOp + 1
+			rf.applyCond.Signal()
 		} else {
-			matched := 1
-			for i := range rf.peers {
-				if rf.matchIndex[i] > rf.newOp && i != rf.me {
-					matched++
-					if matched*2 > len(rf.peers) {
-						newCommit = true
-						break
-					}
-				}
-			}
-			if !newCommit {
-				rf.commitCond.Wait()
-			}
+			rf.commitCond.Wait()
 		}
 	}
 	rf.mu.Unlock()
