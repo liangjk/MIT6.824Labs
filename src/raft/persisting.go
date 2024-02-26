@@ -13,7 +13,7 @@ import (
 // second argument to persister.Save().
 // after you've implemented snapshots, pass the current snapshot
 // (or nil if there's not yet a snapshot).
-func (rf *Raft) persist() {
+func (rf *Raft) persistL() {
 	// Your code here (3C).
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)

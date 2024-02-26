@@ -17,7 +17,7 @@ type RequestVoteReply struct {
 	Granted bool
 }
 
-func (rf *Raft) getLastLog() (term, index int) {
+func (rf *Raft) getLastLogL() (term, index int) {
 	logLen := len(rf.logs) - 1
 	index = rf.startIndex + logLen
 	term = rf.logs[logLen].Term
@@ -43,7 +43,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		return
 	}
 	reply.Term = rf.currentTerm
-	lastLogTerm, lastLogIndex := rf.getLastLog()
+	lastLogTerm, lastLogIndex := rf.getLastLogL()
 	if args.LastLogTerm < lastLogTerm || args.LastLogTerm == lastLogTerm && args.LastLogIndex < lastLogIndex {
 		reply.Granted = false
 		return
@@ -51,7 +51,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.votedFor = args.CandidateId
 	reply.Granted = true
 	atomic.StoreInt32(&rf.missedHeartbeat, 0)
-	rf.persist()
+	rf.persistL()
 }
 
 func (rf *Raft) startElection() {
@@ -63,7 +63,7 @@ func (rf *Raft) startElection() {
 	rf.currentTerm++
 	rf.votedFor = rf.me
 	rf.state = Candidate
-	lastLogTerm, lastLogIndex := rf.getLastLog()
+	lastLogTerm, lastLogIndex := rf.getLastLogL()
 	args := RequestVoteArgs{rf.currentTerm, rf.me, lastLogTerm, lastLogIndex}
 	rf.mu.Unlock()
 

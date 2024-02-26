@@ -129,7 +129,7 @@ func (rf *Raft) Start(command interface{}) (index int, term int, isLeader bool) 
 	index = rf.startIndex + len(rf.logs)
 	isLeader = true
 	rf.logs = append(rf.logs, Log{term, command})
-	rf.persist()
+	rf.persistL()
 	if rf.newOp == 0 {
 		rf.newOp = index
 		rf.commitCond.Broadcast()
@@ -187,7 +187,7 @@ func (rf *Raft) applier() {
 	rf.mu.Unlock()
 }
 
-func (rf *Raft) testIndex(index int) bool {
+func (rf *Raft) testIndexL(index int) bool {
 	matched := 1
 	for i := range rf.peers {
 		if rf.matchIndex[i] > index && i != rf.me {
@@ -209,12 +209,12 @@ func (rf *Raft) committer(term int) {
 			return
 		}
 		if newCommit {
-			if rf.testIndex(rf.commitIndex) {
+			if rf.testIndexL(rf.commitIndex) {
 				lBound := rf.commitIndex + 1
 				rBound := rf.startIndex + len(rf.logs)
 				for rBound > lBound {
 					mid := (lBound + rBound) >> 1
-					if rf.testIndex(mid) {
+					if rf.testIndexL(mid) {
 						lBound = mid + 1
 					} else {
 						rBound = mid

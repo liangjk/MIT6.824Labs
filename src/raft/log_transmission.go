@@ -78,7 +78,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		argsIndex++
 	}
 	if modified {
-		rf.persist()
+		rf.persistL()
 	}
 	if args.LeaderCommit > rf.commitIndex {
 		rf.commitIndex = args.LeaderCommit
