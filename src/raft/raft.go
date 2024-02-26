@@ -132,6 +132,7 @@ func (rf *Raft) Start(command interface{}) (index int, term int, isLeader bool) 
 	rf.persist()
 	if rf.newOp == 0 {
 		rf.newOp = index
+		rf.commitCond.Broadcast()
 		go rf.committer(rf.currentTerm)
 	}
 	rf.lastMsg = time.Now().UnixMilli()
@@ -145,6 +146,7 @@ func (rf *Raft) Start(command interface{}) (index int, term int, isLeader bool) 
 
 func (rf *Raft) applier() {
 	rf.mu.Lock()
+	defer close(rf.applyCh)
 	for !rf.killed() {
 		if rf.snapshotApplying {
 			msg := ApplyMsg{SnapshotValid: true, Snapshot: rf.snapshot, SnapshotTerm: rf.logs[0].Term, SnapshotIndex: rf.startIndex}

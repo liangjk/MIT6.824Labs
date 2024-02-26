@@ -145,7 +145,6 @@ func (rf *Raft) sendLog(peer, term int) {
 			return
 		}
 	}
-
 }
 
 func (rf *Raft) heartbeat(term int) {

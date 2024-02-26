@@ -12,6 +12,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	Assert(index < rf.lastApplied, "Snapshot includes command not applied: %v, lastApplied: %v", index, rf.lastApplied)
 	discardIndex := index - rf.startIndex
 	if discardIndex < 0 {
+		rf.mu.Unlock()
 		return
 	}
 	rf.startIndex = index
