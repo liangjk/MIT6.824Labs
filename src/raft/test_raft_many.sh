@@ -10,4 +10,4 @@ for i in {1..200}; do
     done
     echo -e "\nTest $i with race flag"
     time go test -race -timeout 15m
-done | tee test.log
+done 2>&1 | tee test.log

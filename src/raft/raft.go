@@ -162,8 +162,7 @@ func (rf *Raft) applier() {
 				}
 				rf.mu.Lock()
 			}
-		}
-		if rf.lastApplied < rf.commitIndex {
+		} else if rf.lastApplied < rf.commitIndex {
 			var batch []ApplyMsg
 			for rf.lastApplied < rf.commitIndex {
 				msg := ApplyMsg{CommandValid: true, Command: rf.logs[rf.lastApplied-rf.startIndex].Command, CommandIndex: rf.lastApplied}
@@ -202,10 +201,10 @@ func (rf *Raft) testIndexL(index int) bool {
 
 func (rf *Raft) committer(term int) {
 	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	newCommit := false
 	for !rf.killed() {
 		if rf.currentTerm != term {
-			rf.mu.Unlock()
 			return
 		}
 		if newCommit {
@@ -232,7 +231,6 @@ func (rf *Raft) committer(term int) {
 			rf.commitCond.Wait()
 		}
 	}
-	rf.mu.Unlock()
 }
 
 // the tester doesn't halt goroutines created by Raft after each test,

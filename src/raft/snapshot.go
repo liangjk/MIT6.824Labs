@@ -9,10 +9,10 @@ import "sync/atomic"
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (3D).
 	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	Assert(index < rf.lastApplied, "Snapshot includes command not applied: %v, lastApplied: %v", index, rf.lastApplied)
 	discardIndex := index - rf.startIndex
-	if discardIndex < 0 {
-		rf.mu.Unlock()
+	if discardIndex <= 0 {
 		return
 	}
 	rf.startIndex = index
@@ -20,7 +20,6 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	rf.logs = append(newLogs, rf.logs[discardIndex+1:]...)
 	rf.snapshot = snapshot
 	rf.persistL()
-	rf.mu.Unlock()
 }
 
 func (rf *Raft) sendSnapshot(peer, term, mIndex int, args *InstallSnapshotArgs) {
@@ -71,7 +70,10 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	rf.state = Follower
 	atomic.StoreInt32(&rf.missedHeartbeat, 0)
 	discardIndex := args.LastIndex - rf.startIndex
-	if discardIndex <= 0 {
+	if rf.lastApplied > args.LastIndex {
+		if discardIndex > 0 {
+			go rf.Snapshot(args.LastIndex, args.Data)
+		}
 		return
 	}
 	rf.snapshot = args.Data
