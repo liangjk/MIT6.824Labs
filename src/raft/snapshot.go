@@ -84,7 +84,7 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	} else {
 		rf.logs = newLogs
 	}
-	if rf.commitIndex < args.LastIndex+1 {
+	if rf.commitIndex <= args.LastIndex {
 		rf.commitIndex = args.LastIndex + 1
 	}
 	rf.lastApplied = args.LastIndex + 1
