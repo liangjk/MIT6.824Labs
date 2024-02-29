@@ -96,12 +96,15 @@ func (rf *Raft) sendLog(peer, term int) {
 	for {
 		if rf.nextIndex[peer] <= rf.startIndex {
 			rf.nextIndex[peer] = rf.startIndex + 1
-			snapshotArgs := InstallSnapshotArgs{rf.currentTerm, rf.startIndex, rf.logs[0].Term, rf.snapshot}
+			snapshotArgs := InstallSnapshotArgs{rf.currentTerm, rf.startIndex, rf.logs[0].Term, make([]byte, len(rf.snapshot))}
+			copy(snapshotArgs.Data, rf.snapshot)
 			go rf.sendSnapshot(peer, term, rf.startIndex+1, &snapshotArgs)
 			rf.mu.Unlock()
 			return
 		}
-		args := AppendEntriesArgs{Term: rf.currentTerm, Entries: rf.logs[rf.nextIndex[peer]-rf.startIndex:], LeaderCommit: rf.commitIndex}
+		toSend := rf.logs[rf.nextIndex[peer]-rf.startIndex:]
+		args := AppendEntriesArgs{Term: rf.currentTerm, Entries: make([]Log, len(toSend)), LeaderCommit: rf.commitIndex}
+		copy(args.Entries, toSend)
 		args.PrevLogIndex = rf.nextIndex[peer] - 1
 		args.PrevLogTerm = rf.logs[args.PrevLogIndex-rf.startIndex].Term
 		tempSave := rf.nextIndex[peer]
