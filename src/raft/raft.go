@@ -149,7 +149,8 @@ func (rf *Raft) applier() {
 	defer close(rf.applyCh)
 	for !rf.killed() {
 		if rf.snapshotApplying {
-			msg := ApplyMsg{SnapshotValid: true, Snapshot: rf.snapshot, SnapshotTerm: rf.logs[0].Term, SnapshotIndex: rf.startIndex}
+			msg := ApplyMsg{SnapshotValid: true, Snapshot: make([]byte, len(rf.snapshot)), SnapshotTerm: rf.logs[0].Term, SnapshotIndex: rf.startIndex}
+			copy(msg.Snapshot, rf.snapshot)
 			rf.snapshotApplying = false
 			select {
 			case rf.applyCh <- msg:
