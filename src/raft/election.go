@@ -72,7 +72,7 @@ func (rf *Raft) startElection() {
 		Fail    = 0
 	)
 	numServers := len(rf.peers)
-	results := make(chan int, numServers)
+	results := make(chan int, numServers-1)
 	votes := 1
 	elected := false
 	for i := 0; i < numServers; i++ {
