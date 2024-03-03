@@ -75,7 +75,7 @@ func TestDeaf(t *testing.T) {
 
 	npaxos := 5
 	cfg := make_config(t, npaxos, false)
-	defer cfg.cleanup(5)
+	defer cfg.cleanup(8)
 
 	cfg.begin("Test: Deaf proposer")
 
