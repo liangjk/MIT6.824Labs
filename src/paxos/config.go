@@ -288,7 +288,7 @@ func (cfg *config) ndecided(seq int) int {
 	count := 0
 	var v interface{}
 	for i := 0; i < len(cfg.pxa); i++ {
-		if cfg.connected[i] {
+		if cfg.pxa[i] != nil {
 			decided, v1 := cfg.pxa[i].Status(seq)
 			if decided == Decided {
 				if count > 0 && v != v1 {
