@@ -17,6 +17,7 @@ func (px *Paxos) ticker() {
 		startIndex := px.startIndex
 		myDecided := px.decided
 		px.mu.Unlock()
+		nextWakeup := time.Now().Add(tickerIntv)
 
 		numServers := len(px.peers)
 		replyCh := make(chan DoneReply, numServers-1)
@@ -69,6 +70,6 @@ func (px *Paxos) ticker() {
 			px.mu.Unlock()
 		}
 
-		time.Sleep(time.Millisecond * tickerIntv)
+		time.Sleep(time.Until(nextWakeup))
 	}
 }
