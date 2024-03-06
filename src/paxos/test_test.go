@@ -105,8 +105,7 @@ func TestDeaf(t *testing.T) {
 	cfg.waitn(1, npaxos-1)
 	cfg.checkmax(1, npaxos-1)
 
-	cfg.pxa[npaxos-1].Start(1, "yyy")
-	cfg.waitn(1, npaxos)
+	cfg.one(npaxos-1, 1, "yyy")
 
 	cfg.end()
 }
