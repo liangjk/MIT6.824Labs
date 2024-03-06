@@ -361,16 +361,17 @@ func TestRPCCount(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	total1 := int32(0)
+	total1 := -cfg.rpcs0
 	for j := 0; j < npaxos; j++ {
-		total1 += int32(cfg.rpcCount(j))
+		total1 += cfg.rpcCount(j)
 	}
+	t1 := time.Now()
 
 	// per agreement:
 	// 3 prepares
 	// 3 accepts
 	// 3 decides
-	expected1 := int32(ninst1 * npaxos * npaxos)
+	expected1 := ninst1*npaxos*3 + int(t1.Sub(cfg.t0)/tickerIntv)*npaxos*npaxos
 	if total1 > expected1 {
 		t.Fatalf("too many RPCs for serial Start()s; %v instances, got %v, expected %v",
 			ninst1, total1, expected1)
@@ -387,17 +388,17 @@ func TestRPCCount(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	total2 := int32(0)
+	total2 := -total1
 	for j := 0; j < npaxos; j++ {
-		total2 += int32(cfg.rpcCount(j))
+		total2 += cfg.rpcCount(j)
 	}
-	total2 -= total1
+	t2 := time.Now()
 
 	// worst case per agreement:
 	// Proposer 1: 3 prep, 3 acc, 3 decides.
 	// Proposer 2: 3 prep, 3 acc, 3 prep, 3 acc, 3 decides.
 	// Proposer 3: 3 prep, 3 acc, 3 prep, 3 acc, 3 prep, 3 acc, 3 decides.
-	expected2 := int32(ninst2 * npaxos * 15)
+	expected2 := ninst2*npaxos*15 + int(t2.Sub(t1)/tickerIntv)*npaxos*npaxos
 	if total2 > expected2 {
 		t.Fatalf("too many RPCs for concurrent Start()s; %v instances, got %v, expected %v",
 			ninst2, total2, expected2)
@@ -548,6 +549,7 @@ func TestPartition(t *testing.T) {
 	cfg.waitn(seq, npaxos)
 
 	fmt.Printf("  ... Passed\n")
+	cfg.setLongDelay(false)
 	fmt.Printf("Test: One peer switches partitions ...\n")
 
 	for iters := 0; iters < 20; iters++ {
@@ -665,6 +667,7 @@ func TestLots(t *testing.T) {
 
 	// repair, then check that all instances decided.
 	cfg.setunreliable(false)
+	cfg.setLongDelay(false)
 	cfg.partition([][]int{{0, 1, 2, 3, 4}})
 	time.Sleep(5 * time.Second)
 
