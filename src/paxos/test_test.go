@@ -15,11 +15,24 @@ func TestSpeed(t *testing.T) {
 	defer cfg.cleanup(3)
 
 	cfg.begin("Test: Speed")
-	for i := 0; i < 200; i++ {
-		cfg.one(0, i, "x", true)
-	}
 
-	fmt.Printf("200 agreements for time test\n")
+	fmt.Printf("Test: 200 agreements sequential ...\n")
+	st := time.Now()
+	for i := 0; i < 200; i++ {
+		cfg.one(0, i, "seq")
+	}
+	fmt.Printf("  ... Using %v ms\n", time.Since(st).Milliseconds())
+
+	fmt.Printf("Test: 200 agreements concurrent ...\n")
+	st = time.Now()
+	for i := 0; i < 200; i++ {
+		cfg.pxa[0].Start(200+i, "con")
+	}
+	for i := 0; i < 200; i++ {
+		cfg.waitn(200+i, npaxos)
+	}
+	fmt.Printf("  ... Using %v ms\n", time.Since(st).Milliseconds())
+
 	cfg.end()
 }
 
@@ -31,13 +44,13 @@ func TestBasic(t *testing.T) {
 	cfg.begin("Test: Basic")
 	fmt.Printf("Test: Single proposer ...\n")
 
-	cfg.one(0, 0, "hello", true)
+	cfg.one(0, 0, "hello")
 
 	fmt.Printf("  ... Passed\n")
 	fmt.Printf("Test: Many proposers, same value ...\n")
 
 	for i := 0; i < npaxos; i++ {
-		cfg.one(i, 1, 77, false)
+		cfg.pxa[i].Start(1, 77)
 	}
 	cfg.waitn(1, npaxos)
 
@@ -45,19 +58,19 @@ func TestBasic(t *testing.T) {
 	fmt.Printf("Test: Many proposers, different values ...\n")
 
 	for i := 0; i < npaxos; i++ {
-		cfg.one(i, 2, 100+i, false)
+		cfg.pxa[i].Start(2, 100+i)
 	}
 	cfg.waitn(2, npaxos)
 
 	fmt.Printf("  ... Passed\n")
 	fmt.Printf("Test: Out-of-order instances ...\n")
 
-	cfg.one(0, 7, 700, false)
-	cfg.one(0, 6, 600, false)
-	cfg.one(1, 5, 500, false)
+	cfg.pxa[0].Start(7, 700)
+	cfg.pxa[0].Start(6, 600)
+	cfg.pxa[1].Start(5, 500)
 	cfg.waitn(7, npaxos)
-	cfg.one(0, 4, 400, false)
-	cfg.one(1, 3, 300, false)
+	cfg.pxa[0].Start(4, 400)
+	cfg.pxa[1].Start(3, 300)
 	cfg.waitn(6, npaxos)
 	cfg.waitn(5, npaxos)
 	cfg.waitn(4, npaxos)
@@ -79,26 +92,21 @@ func TestDeaf(t *testing.T) {
 
 	cfg.begin("Test: Deaf proposer")
 
-	cfg.one(0, 0, "hello", true)
+	cfg.one(0, 0, "hello")
 
 	cfg.disconnectIncome(0)
 	cfg.disconnectIncome(npaxos - 1)
 
-	cfg.one(1, 1, "goodbye", false)
+	cfg.pxa[1].Start(1, "goodbye")
 	cfg.waitmajority(1)
-	time.Sleep(1 * time.Second)
-	if cfg.ndecided(1) != npaxos-2 {
-		t.Fatalf("a deaf peer heard about a decision")
-	}
+	cfg.checkmax(1, npaxos-2)
 
-	cfg.one(0, 1, "xxx", false)
+	cfg.pxa[0].Start(1, "xxx")
 	cfg.waitn(1, npaxos-1)
-	time.Sleep(1 * time.Second)
-	if cfg.ndecided(1) != npaxos-1 {
-		t.Fatalf("a deaf peer heard about a decision")
-	}
+	cfg.checkmax(1, npaxos-1)
 
-	cfg.one(npaxos-1, 1, "yyy", true)
+	cfg.pxa[npaxos-1].Start(1, "yyy")
+	cfg.waitn(1, npaxos)
 
 	cfg.end()
 }
@@ -118,11 +126,11 @@ func TestForget(t *testing.T) {
 		}
 	}
 
-	cfg.one(0, 0, "00", false)
-	cfg.one(1, 1, "11", false)
-	cfg.one(2, 2, "22", false)
-	cfg.one(0, 6, "66", false)
-	cfg.one(1, 7, "77", false)
+	cfg.pxa[0].Start(0, "00")
+	cfg.pxa[1].Start(1, "11")
+	cfg.pxa[2].Start(2, "22")
+	cfg.pxa[0].Start(6, "66")
+	cfg.pxa[1].Start(7, "77")
 
 	cfg.waitn(0, npaxos)
 
@@ -152,7 +160,7 @@ func TestForget(t *testing.T) {
 		cfg.pxa[i].Done(1)
 	}
 	for i := 0; i < npaxos; i++ {
-		cfg.one(i, 8+i, "xx", false)
+		cfg.pxa[i].Start(8+i, "xx")
 	}
 	allok := false
 	for iters := 0; iters < 12; iters++ {
@@ -239,7 +247,7 @@ func TestForgetMem(t *testing.T) {
 
 	cfg.begin("Test: Paxos frees forgotten instance memory")
 
-	cfg.one(0, 0, "x", true)
+	cfg.one(0, 0, "x")
 
 	runtime.GC()
 	var m0 runtime.MemStats
@@ -251,7 +259,7 @@ func TestForgetMem(t *testing.T) {
 		for j := 0; j < len(big); j++ {
 			big[j] = byte('a' + rand.Int()%26)
 		}
-		cfg.one(0, i, string(big), true)
+		cfg.one(0, i, string(big))
 	}
 
 	runtime.GC()
@@ -313,10 +321,10 @@ func TestDoneMax(t *testing.T) {
 
 	cfg.begin("Test: Paxos Max() after Done()s")
 
-	cfg.one(0, 0, "x", true)
+	cfg.one(0, 0, "x")
 
 	for i := 1; i <= 10; i++ {
-		cfg.one(0, i, "y", true)
+		cfg.one(0, i, "y")
 	}
 
 	for i := 0; i < npaxos; i++ {
@@ -348,7 +356,7 @@ func TestRPCCount(t *testing.T) {
 	ninst1 := 5
 	seq := 0
 	for i := 0; i < ninst1; i++ {
-		cfg.one(0, seq, "x", true)
+		cfg.one(0, seq, "x")
 		seq++
 	}
 

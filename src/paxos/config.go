@@ -338,14 +338,9 @@ func (cfg *config) checkmax(seq int, max int) {
 	}
 }
 
-func (cfg *config) one(server, seq int, cmd interface{}, waitAll bool) {
-	cfg.mu.Lock()
-	px := cfg.pxa[server]
-	cfg.mu.Unlock()
-	px.Start(seq, cmd)
-	if waitAll {
-		cfg.waitn(seq, cfg.n)
-	}
+func (cfg *config) one(server, seq int, cmd interface{}) {
+	cfg.pxa[server].Start(seq, cmd)
+	cfg.waitn(seq, cfg.n)
 }
 
 func (cfg *config) partition(p [][]int) {
