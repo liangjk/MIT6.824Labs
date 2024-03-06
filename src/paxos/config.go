@@ -68,7 +68,14 @@ func make_config(t *testing.T, n int, unreliable bool) *config {
 
 	cfg.setunreliable(unreliable)
 
-	cfg.net.LongDelays(true)
+	fmt.Print("\nSetting: LongDelays: ")
+	if rand.Intn(2) == 0 {
+		cfg.net.LongDelays(true)
+		fmt.Println("true")
+	} else {
+		cfg.net.LongDelays(false)
+		fmt.Println("false")
+	}
 
 	for i := 0; i < cfg.n; i++ {
 		cfg.start1(i)

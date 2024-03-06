@@ -117,19 +117,14 @@ func (px *Paxos) Min() int {
 func (px *Paxos) Status(seq int) (Fate, interface{}) {
 	// Your code here.
 	px.mu.Lock()
-	if seq < px.startIndex {
-		px.mu.Unlock()
-		return Forgotten, nil
-	} else if seq >= px.startIndex+len(px.instances) {
-		px.mu.Unlock()
-		return Pending, nil
-	}
-	inst := px.instances[seq-px.startIndex]
+	inst := px.getInstanceL(seq)
 	px.mu.Unlock()
+	if inst == nil {
+		return Forgotten, nil
+	}
 	inst.mu.Lock()
 	defer inst.mu.Unlock()
 	if inst.status == Decided {
-		px.persistInstanceL(seq, inst)
 		return Decided, inst.value
 	}
 	return Pending, nil
