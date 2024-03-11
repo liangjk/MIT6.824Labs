@@ -12,7 +12,7 @@ import (
 	"6.5840/raft"
 )
 
-const Debug = false
+const Debug = true
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug {
@@ -75,7 +75,7 @@ func (kv *KVServer) getWaitL(cid int32) (ret *sync.Cond) {
 }
 
 func (kv *KVServer) checkTermL(term int) {
-	if term != kv.nowTerm {
+	if term > kv.nowTerm {
 		kv.nowTerm = term
 		for _, cond := range kv.wait {
 			cond.Broadcast()
@@ -203,10 +203,12 @@ func (kv *KVServer) applyMsg(msg *raft.ApplyMsg) {
 		}
 	} else if msg.SnapshotValid {
 		kv.mu.Lock()
-		kv.applySnapshotL(msg.Snapshot)
+		ok := kv.applySnapshotL(msg.Snapshot)
 		kv.checkTermL(msg.SnapshotTerm)
 		kv.mu.Unlock()
-		return
+		if ok {
+			return
+		}
 	}
 	DPrintf("Unknown apply message: %v\n", *msg)
 }
