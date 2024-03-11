@@ -61,6 +61,8 @@ type KVServer struct {
 
 	wait    map[int32]*sync.Cond
 	nowTerm int
+
+	doneCh chan bool
 }
 
 func (kv *KVServer) getWaitL(cid int32) (ret *sync.Cond) {
@@ -153,6 +155,7 @@ func (kv *KVServer) Kill() {
 	atomic.StoreInt32(&kv.dead, 1)
 	kv.rf.Kill()
 	// Your code here, if desired.
+	close(kv.doneCh)
 }
 
 func (kv *KVServer) killed() bool {
@@ -211,8 +214,17 @@ func (kv *KVServer) applyMsg(msg *raft.ApplyMsg) {
 }
 
 func (kv *KVServer) applier() {
-	for msg := range kv.applyCh {
-		kv.applyMsg(&msg)
+	for {
+		select {
+		case msg, ok := <-kv.applyCh:
+			if ok {
+				kv.applyMsg(&msg)
+			} else {
+				return
+			}
+		case <-kv.doneCh:
+			return
+		}
 	}
 }
 
@@ -298,6 +310,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.wait = make(map[int32]*sync.Cond)
 	kv.nowTerm = 0
 
+	kv.doneCh = make(chan bool)
 	go kv.applier()
 	go kv.ticker()
 
