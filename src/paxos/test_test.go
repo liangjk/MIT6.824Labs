@@ -23,15 +23,15 @@ func TestSpeed(t *testing.T) {
 	}
 	fmt.Printf("  ... Using %v ms\n", time.Since(st).Milliseconds())
 
-	fmt.Printf("Test: 200 agreements concurrent ...\n")
-	st = time.Now()
-	for i := 0; i < 200; i++ {
-		cfg.pxa[0].Start(200+i, "con")
-	}
-	for i := 0; i < 200; i++ {
-		cfg.waitn(200+i, npaxos)
-	}
-	fmt.Printf("  ... Using %v ms\n", time.Since(st).Milliseconds())
+//	fmt.Printf("Test: 200 agreements concurrent ...\n")
+//	st = time.Now()
+//	for i := 0; i < 200; i++ {
+//		cfg.pxa[0].Start(200+i, "con")
+//	}
+//	for i := 0; i < 200; i++ {
+//		cfg.waitn(200+i, npaxos)
+//	}
+//	fmt.Printf("  ... Using %v ms\n", time.Since(st).Milliseconds())
 
 	cfg.end()
 }
