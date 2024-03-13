@@ -28,46 +28,36 @@ type Config struct {
 	Groups map[int][]string // gid -> servers[]
 }
 
-const (
-	OK = "OK"
-)
-
-type Err string
-
 type JoinArgs struct {
 	Servers map[int][]string // new GID -> servers mappings
-}
-
-type JoinReply struct {
-	WrongLeader bool
-	Err         Err
+	Cid     int32
+	Seq     int64
 }
 
 type LeaveArgs struct {
 	GIDs []int
-}
-
-type LeaveReply struct {
-	WrongLeader bool
-	Err         Err
+	Cid  int32
+	Seq  int64
 }
 
 type MoveArgs struct {
 	Shard int
 	GID   int
+	Cid   int32
+	Seq   int64
 }
 
-type MoveReply struct {
-	WrongLeader bool
-	Err         Err
+type OpReply struct {
+	Ok bool
 }
 
 type QueryArgs struct {
 	Num int // desired config number
+	Cid int32
+	Seq int64
 }
 
 type QueryReply struct {
-	WrongLeader bool
-	Err         Err
-	Config      Config
+	Ok     bool
+	Config Config
 }
