@@ -14,8 +14,9 @@ import (
 type Clerk struct {
 	servers []*labrpc.ClientEnd
 	// Your data here.
-	cid int32
-	seq int64
+	cid    int32
+	seq    int64
+	leader int
 }
 
 // func nrand() int64 {
@@ -33,6 +34,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	// Your code here.
 	ck.cid = atomic.AddInt32(&assignedCid, 1)
 	ck.seq = 0
+	ck.leader = 0
 	return ck
 }
 
@@ -43,13 +45,18 @@ func (ck *Clerk) Query(num int) Config {
 	args.Cid = ck.cid
 	ck.seq++
 	args.Seq = ck.seq
+		serverCnt := len(ck.servers)
 	for {
 		// try each known server.
-		for _, srv := range ck.servers {
+		for i := 0; i < serverCnt; i++ {
 			var reply QueryReply
-			ok := srv.Call("ShardCtrler.Query", args, &reply)
+			ok := ck.servers[ck.leader].Call("ShardCtrler.Query", args, &reply)
 			if ok && reply.Ok {
 				return reply.Config
+			}
+			ck.leader++
+			if ck.leader >= serverCnt {
+				ck.leader = 0
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -63,13 +70,18 @@ func (ck *Clerk) Join(servers map[int][]string) {
 	args.Cid = ck.cid
 	ck.seq++
 	args.Seq = ck.seq
+		serverCnt := len(ck.servers)
 	for {
 		// try each known server.
-		for _, srv := range ck.servers {
+		for i := 0; i < serverCnt; i++ {
 			var reply OpReply
-			ok := srv.Call("ShardCtrler.Join", args, &reply)
+			ok := ck.servers[ck.leader].Call("ShardCtrler.Join", args, &reply)
 			if ok && reply.Ok {
 				return
+			}
+			ck.leader++
+			if ck.leader >= serverCnt {
+				ck.leader = 0
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -83,13 +95,18 @@ func (ck *Clerk) Leave(gids []int) {
 	args.Cid = ck.cid
 	ck.seq++
 	args.Seq = ck.seq
+	serverCnt := len(ck.servers)
 	for {
 		// try each known server.
-		for _, srv := range ck.servers {
+		for i := 0; i < serverCnt; i++ {
 			var reply OpReply
-			ok := srv.Call("ShardCtrler.Leave", args, &reply)
+			ok := ck.servers[ck.leader].Call("ShardCtrler.Leave", args, &reply)
 			if ok && reply.Ok {
 				return
+			}
+			ck.leader++
+			if ck.leader >= serverCnt {
+				ck.leader = 0
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -104,13 +121,18 @@ func (ck *Clerk) Move(shard int, gid int) {
 	args.Cid = ck.cid
 	ck.seq++
 	args.Seq = ck.seq
+	serverCnt := len(ck.servers)
 	for {
 		// try each known server.
-		for _, srv := range ck.servers {
+		for i := 0; i < serverCnt; i++ {
 			var reply OpReply
-			ok := srv.Call("ShardCtrler.Move", args, &reply)
+			ok := ck.servers[ck.leader].Call("ShardCtrler.Move", args, &reply)
 			if ok && reply.Ok {
 				return
+			}
+			ck.leader++
+			if ck.leader >= serverCnt {
+				ck.leader = 0
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
