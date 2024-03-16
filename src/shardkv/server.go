@@ -52,10 +52,10 @@ type ShardKV struct {
 	kvs     [shardctrler.NShards]*ShardData
 	wait    [shardctrler.NShards]map[int32]*sync.Cond
 
-	gmu         [shardctrler.NShards]sync.Mutex
-	gseq        [shardctrler.NShards]map[int]int64
-	ginstalling [shardctrler.NShards]bool
-	gwait       [shardctrler.NShards]*sync.Cond
+	tmmu       [shardctrler.NShards]sync.Mutex
+	tmseq      [shardctrler.NShards]map[int]int64
+	installing [shardctrler.NShards]bool
+	tmwait     [shardctrler.NShards]*sync.Cond
 
 	nowTerm int32
 
@@ -74,9 +74,9 @@ func (kv *ShardKV) wakeup() {
 			kv.shardmu[shard].Unlock()
 		}(i)
 		go func(shard int) {
-			kv.gmu[shard].Lock()
-			kv.gwait[shard].Broadcast()
-			kv.gmu[shard].Unlock()
+			kv.tmmu[shard].Lock()
+			kv.tmwait[shard].Broadcast()
+			kv.tmmu[shard].Unlock()
 		}(i)
 	}
 }
@@ -135,8 +135,8 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
 	for i := 0; i < shardctrler.NShards; i++ {
-		kv.gseq[i] = make(map[int]int64)
-		kv.gwait[i] = sync.NewCond(&kv.gmu[i])
+		kv.tmseq[i] = make(map[int]int64)
+		kv.tmwait[i] = sync.NewCond(&kv.tmmu[i])
 	}
 
 	kv.doneCh = make(chan bool)

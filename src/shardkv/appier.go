@@ -19,30 +19,24 @@ func (kv *ShardKV) applyConfig(cfg *shardctrler.Config) {
 	kv.cmu.Lock()
 	kv.config = *cfg
 	kv.cmu.Unlock()
-	wg := sync.WaitGroup{}
 	for i, gid := range cfg.Shards {
-		wg.Add(1)
-		go func(shard, gid int) {
-			defer wg.Done()
-			kv.shardmu[shard].Lock()
-			defer kv.shardmu[shard].Unlock()
-			sdd := kv.kvs[shard]
-			if sdd != nil {
-				if gid != kv.gid {
-					kv.removeShardL(shard)
-					kv.seq[shard]++
-					go kv.sendShard(cfg.Groups[gid], shard, sdd, kv.seq[shard])
-				}
-			} else if gid == kv.gid {
-				if kv.crtclerk.Create(shard, cfg.Num) {
-					// DPrintf("Group:%v Server:%v creating shard:%v\n", kv.gid, kv.me, shard)
-					kv.kvs[shard] = &ShardData{make(map[string]string), make(map[int32]int64), make(map[int32]string)}
-					kv.wait[shard] = make(map[int32]*sync.Cond)
-				}
+		kv.shardmu[i].Lock()
+		sdd := kv.kvs[i]
+		if sdd != nil {
+			if gid != kv.gid {
+				kv.removeShardL(i)
+				kv.seq[i]++
+				go kv.sendShard(cfg.Groups[gid], i, sdd, kv.seq[i])
 			}
-		}(i, gid)
+		} else if gid == kv.gid {
+			if kv.crtclerk.Create(i, cfg.Num) {
+				// DPrintf("Group:%v Server:%v creating shard:%v\n", kv.gid, kv.me, shard)
+				kv.kvs[i] = &ShardData{make(map[string]string), make(map[int32]int64), make(map[int32]string)}
+				kv.wait[i] = make(map[int32]*sync.Cond)
+			}
+		}
+		kv.shardmu[i].Unlock()
 	}
-	wg.Wait()
 }
 
 func (kv *ShardKV) applyMsg(msg *raft.ApplyMsg) {
