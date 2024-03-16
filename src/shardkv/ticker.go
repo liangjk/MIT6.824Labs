@@ -3,12 +3,15 @@ package shardkv
 import (
 	"sync/atomic"
 	"time"
+
+	"6.5840/shardctrler"
 )
 
 const (
-	ctrlerMs  = 100
-	leaderMs  = 1000
-	installMs = 100
+	ctrlerMs    = 100
+	leaderMs    = 1000
+	sendLongMs  = 1000
+	sendShortMs = 200
 )
 
 func (kv *ShardKV) checkTerm(term int32) {
@@ -59,5 +62,25 @@ func (kv *ShardKV) ctrlerTicker() {
 			}
 		}
 		timer.Reset(d)
+	}
+}
+
+func (kv *ShardKV) sender() {
+	for {
+		waiting := false
+		for i := 0; i < shardctrler.NShards; i++ {
+			waiting = waiting || kv.sendShard(i)
+		}
+		d := time.Millisecond * sendLongMs
+		if waiting {
+			d = time.Millisecond * sendShortMs
+		}
+		timer := time.NewTimer(d)
+		select {
+		case <-kv.doneCh:
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
 	}
 }

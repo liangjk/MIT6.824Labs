@@ -22,25 +22,31 @@ func (kv *ShardKV) applyConfig(cfg *shardctrler.Config) {
 	for i, gid := range cfg.Shards {
 		kv.shardmu[i].Lock()
 		sdd := kv.kvs[i]
+		var sdkv *SendData
 		if sdd != nil {
 			if gid != kv.gid {
 				kv.removeShardL(i)
 				kv.seq[i]++
-				go kv.sendShard(cfg.Groups[gid], i, sdd, kv.seq[i])
+				sdkv = &SendData{cfg.Groups[gid], *sdd, kv.seq[i]}
 			}
 		} else if gid == kv.gid {
 			if kv.crtclerk.Create(i, cfg.Num) {
-				// DPrintf("Group:%v Server:%v creating shard:%v\n", kv.gid, kv.me, shard)
 				kv.kvs[i] = &ShardData{make(map[string]string), make(map[int32]int64), make(map[int32]string)}
 				kv.wait[i] = make(map[int32]*sync.Cond)
 			}
 		}
 		kv.shardmu[i].Unlock()
+		if sdkv != nil {
+			kv.sdmu[i].Lock()
+			kv.sdkvs[i] = sdkv
+			kv.sdmu[i].Unlock()
+		}
 	}
 }
 
+const snapshotThreshold = 0.9
+
 func (kv *ShardKV) applyMsg(msg *raft.ApplyMsg) {
-	// DPrintf("Group:%v Server:%v apply:%v\n", kv.gid, kv.me, *msg)
 	if msg.CommandValid {
 		switch msg.Command.(type) {
 		case Op:
@@ -55,9 +61,13 @@ func (kv *ShardKV) applyMsg(msg *raft.ApplyMsg) {
 		default:
 			DPrintf("Unknown Command:%v\n", msg.Command)
 		}
+		if kv.maxraftstate > 0 && kv.persister.RaftStateSize() >= int(float32(kv.maxraftstate)*snapshotThreshold) {
+			kv.snapshot(msg.CommandIndex)
+		}
 		return
 	}
 	if msg.SnapshotValid {
+		kv.applySnapshot(msg.Snapshot)
 		return
 	}
 	DPrintf("Unknown Message:%v\n", *msg)

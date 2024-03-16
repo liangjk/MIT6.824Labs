@@ -204,7 +204,9 @@ func (kv *KVServer) applyMsg(msg *raft.ApplyMsg) {
 	} else if msg.SnapshotValid {
 		kv.mu.Lock()
 		ok := kv.applySnapshotL(msg.Snapshot)
-		kv.checkTermL(msg.SnapshotTerm)
+		for _, cond := range kv.wait {
+			cond.Broadcast()
+		}
 		kv.mu.Unlock()
 		if ok {
 			return

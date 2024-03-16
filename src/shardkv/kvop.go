@@ -15,7 +15,6 @@ func (kv *ShardKV) getWaitL(shard int, cid int32) (ret *sync.Cond) {
 }
 
 func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
-	// DPrintf("Get Group:%v Server:%v args:%v\n", kv.gid, kv.me, *args)
 	kv.shardmu[args.Shard].Lock()
 	defer kv.shardmu[args.Shard].Unlock()
 	sdd := kv.kvs[args.Shard]
@@ -62,7 +61,6 @@ func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
 }
 
 func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	// DPrintf("PutAppend Group:%v Server:%v args:%v\n", kv.gid, kv.me, *args)
 	kv.shardmu[args.Shard].Lock()
 	defer kv.shardmu[args.Shard].Unlock()
 	sdd := kv.kvs[args.Shard]

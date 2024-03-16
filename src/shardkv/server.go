@@ -33,6 +33,12 @@ type ShardData struct {
 	ClientReply map[int32]string
 }
 
+type SendData struct {
+	Srvs []string
+	KV   ShardData
+	Seq  int64
+}
+
 type ShardKV struct {
 	me           int
 	rf           *raft.Raft
@@ -56,6 +62,9 @@ type ShardKV struct {
 	tmseq      [shardctrler.NShards]map[int]int64
 	installing [shardctrler.NShards]bool
 	tmwait     [shardctrler.NShards]*sync.Cond
+
+	sdmu  [shardctrler.NShards]sync.Mutex
+	sdkvs [shardctrler.NShards]*SendData
 
 	nowTerm int32
 
@@ -135,8 +144,13 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
 	for i := 0; i < shardctrler.NShards; i++ {
-		kv.tmseq[i] = make(map[int]int64)
 		kv.tmwait[i] = sync.NewCond(&kv.tmmu[i])
+	}
+
+	if !kv.applySnapshot(persister.ReadSnapshot()){
+		for i:=range kv.tmseq{
+			kv.tmseq[i]=make(map[int]int64)
+		}
 	}
 
 	kv.doneCh = make(chan bool)
@@ -144,5 +158,6 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 	go kv.leaderChecker()
 	go kv.ctrlerTicker()
 	go kv.applier()
+	go kv.sender()
 	return kv
 }

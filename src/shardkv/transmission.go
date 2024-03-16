@@ -3,7 +3,6 @@ package shardkv
 import (
 	"sync"
 	"sync/atomic"
-	"time"
 )
 
 type InstallOp InstallShardArgs
@@ -79,29 +78,32 @@ func (kv *ShardKV) applyInstallOp(op *InstallOp) {
 	kv.tmwait[op.Shard].Broadcast()
 }
 
-func (kv *ShardKV) sendShard(servers []string, shard int, data *ShardData, seq int64) {
-	args := InstallShardArgs{shard, kv.gid, seq, *data}
-	for {
-		for _, server := range servers {
-			srv := kv.make_end(server)
-		retry:
-			reply := InstallShardReply{}
-			ok := srv.Call("ShardKV.InstallShard", &args, &reply)
-			if ok {
-				switch reply.Err {
-				case OK:
-					return
-				case ErrWait:
-					time.Sleep(time.Millisecond * installMs)
-					goto retry
+func (kv *ShardKV) sendShard(shard int) bool {
+	kv.sdmu[shard].Lock()
+	if kv.sdkvs[shard] == nil {
+		kv.sdmu[shard].Unlock()
+		return false
+	}
+	args := InstallShardArgs{shard, kv.gid, kv.sdkvs[shard].Seq, kv.sdkvs[shard].KV}
+	servers := kv.sdkvs[shard].Srvs
+	kv.sdmu[shard].Unlock()
+	for _, server := range servers {
+		srv := kv.make_end(server)
+		reply := InstallShardReply{}
+		ok := srv.Call("ShardKV.InstallShard", &args, &reply)
+		if ok {
+			switch reply.Err {
+			case OK:
+				kv.sdmu[shard].Lock()
+				if kv.sdkvs[shard].Seq == args.Seq {
+					kv.sdkvs[shard] = nil
 				}
+				kv.sdmu[shard].Unlock()
+				return false
+			case ErrWait:
+				return true
 			}
 		}
-		time.Sleep(time.Millisecond * 100)
-		select {
-		case <-kv.doneCh:
-			return
-		default:
-		}
 	}
+	return true
 }
