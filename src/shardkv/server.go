@@ -1,39 +1,84 @@
 package shardkv
 
+import (
+	"log"
+	"sync"
 
-import "6.5840/labrpc"
-import "6.5840/raft"
-import "sync"
-import "6.5840/labgob"
+	"6.5840/labgob"
+	"6.5840/labrpc"
+	"6.5840/raft"
+	"6.5840/shardctrler"
+)
 
+const Debug = true
 
+func DPrintf(format string, a ...interface{}) (n int, err error) {
+	if Debug {
+		log.Printf(format, a...)
+	}
+	return
+}
 
 type Op struct {
-	// Your definitions here.
-	// Field names must start with capital letters,
-	// otherwise RPC will break.
+	Code       OpCode
+	Key, Value string
+	Shard      int
+	Cid        int32
+	Seq        int64
+}
+
+type ShardData struct {
+	KV          map[string]string
+	ClientSeq   map[int32]int64
+	ClientReply map[int32]string
 }
 
 type ShardKV struct {
-	mu           sync.Mutex
 	me           int
 	rf           *raft.Raft
 	applyCh      chan raft.ApplyMsg
-	make_end     func(string) *labrpc.ClientEnd
-	gid          int
-	ctrlers      []*labrpc.ClientEnd
+	persister    *raft.Persister
 	maxraftstate int // snapshot if log grows this big
 
-	// Your definitions here.
+	make_end func(string) *labrpc.ClientEnd
+	gid      int
+	seq      [shardctrler.NShards]int64
+
+	cfgclerk, crtclerk *shardctrler.Clerk
+	cmu                sync.Mutex
+	config             shardctrler.Config
+
+	shardmu [shardctrler.NShards]sync.Mutex
+	kvs     [shardctrler.NShards]*ShardData
+	wait    [shardctrler.NShards]map[int32]*sync.Cond
+
+	gmu         [shardctrler.NShards]sync.Mutex
+	gseq        [shardctrler.NShards]map[int]int64
+	ginstalling [shardctrler.NShards]bool
+	gwait       [shardctrler.NShards]*sync.Cond
+
+	nowTerm int32
+
+	doneCh chan bool
 }
 
-
-func (kv *ShardKV) Get(args *GetArgs, reply *GetReply) {
-	// Your code here.
-}
-
-func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	// Your code here.
+func (kv *ShardKV) wakeup() {
+	for i := 0; i < shardctrler.NShards; i++ {
+		go func(shard int) {
+			kv.shardmu[shard].Lock()
+			if kv.kvs[shard] != nil {
+				for _, cond := range kv.wait[shard] {
+					cond.Broadcast()
+				}
+			}
+			kv.shardmu[shard].Unlock()
+		}(i)
+		go func(shard int) {
+			kv.gmu[shard].Lock()
+			kv.gwait[shard].Broadcast()
+			kv.gmu[shard].Unlock()
+		}(i)
+	}
 }
 
 // the tester calls Kill() when a ShardKV instance won't
@@ -42,9 +87,9 @@ func (kv *ShardKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 // turn off debug output from this instance.
 func (kv *ShardKV) Kill() {
 	kv.rf.Kill()
-	// Your code here, if desired.
+	close(kv.doneCh)
+	kv.wakeup()
 }
-
 
 // servers[] contains the ports of the servers in this group.
 //
@@ -73,25 +118,31 @@ func (kv *ShardKV) Kill() {
 // StartServer() must return quickly, so it should start goroutines
 // for any long-running work.
 func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister, maxraftstate int, gid int, ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.ClientEnd) *ShardKV {
-	// call labgob.Register on structures you want
-	// Go's RPC library to marshall/unmarshall.
 	labgob.Register(Op{})
+	labgob.Register(shardctrler.Config{})
+	labgob.Register(InstallOp{})
 
 	kv := new(ShardKV)
 	kv.me = me
 	kv.maxraftstate = maxraftstate
 	kv.make_end = make_end
 	kv.gid = gid
-	kv.ctrlers = ctrlers
-
-	// Your initialization code here.
-
-	// Use something like this to talk to the shardctrler:
-	// kv.mck = shardctrler.MakeClerk(kv.ctrlers)
+	kv.cfgclerk = shardctrler.MakeClerk(ctrlers)
+	kv.crtclerk = shardctrler.MakeClerk(ctrlers)
 
 	kv.applyCh = make(chan raft.ApplyMsg)
+	kv.persister = persister
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
+	for i := 0; i < shardctrler.NShards; i++ {
+		kv.gseq[i] = make(map[int]int64)
+		kv.gwait[i] = sync.NewCond(&kv.gmu[i])
+	}
 
+	kv.doneCh = make(chan bool)
+
+	go kv.leaderChecker()
+	go kv.ctrlerTicker()
+	go kv.applier()
 	return kv
 }

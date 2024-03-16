@@ -35,6 +35,7 @@ type ShardCtrler struct {
 	doneCh chan bool
 
 	configs []Config // indexed by config num
+	create  [NShards]int
 }
 
 type Opcode int
@@ -44,6 +45,7 @@ const (
 	LEAVE
 	MOVE
 	QUERY
+	CREATE
 )
 
 type Op struct {
@@ -154,6 +156,23 @@ func (sc *ShardCtrler) Query(args *QueryArgs, reply *QueryReply) {
 		return
 	}
 	reply.Ok = false
+}
+
+func (sc *ShardCtrler) Create(args *CreateArgs, reply *CreateReply) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	if sc.create[args.Shard] != 0 {
+		reply.Ok = true
+		reply.Create = args.Num == sc.create[args.Shard]
+		return
+	}
+	buf := new(bytes.Buffer)
+	encoder := labgob.NewEncoder(buf)
+	encoder.Encode(args.Shard)
+	encoder.Encode(args.Num)
+	op := Op{CREATE, buf.Bytes(), args.Cid, args.Seq}
+	reply.Ok = sc.operateL(&op)
+	reply.Create = args.Num == sc.create[args.Shard]
 }
 
 func (cfg *Config) reConfig() {
@@ -291,6 +310,29 @@ func (sc *ShardCtrler) applyQuery(op *Op) bool {
 	return true
 }
 
+func (sc *ShardCtrler) applyCreate(op *Op) bool {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	if op.Seq <= sc.clientSeq[op.Cid] {
+		return true
+	}
+	buf := bytes.NewBuffer(op.Content)
+	decoder := labgob.NewDecoder(buf)
+	var Shard, Num int
+	if decoder.Decode(&Shard) != nil {
+		return false
+	}
+	if decoder.Decode(&Num) != nil {
+		return false
+	}
+	if sc.create[Shard] == 0 {
+		sc.create[Shard] = Num
+	}
+	sc.clientSeq[op.Cid] = op.Seq
+	sc.getWaitL(op.Cid).Broadcast()
+	return true
+}
+
 func (sc *ShardCtrler) getWaitL(cid int32) (ret *sync.Cond) {
 	ret = sc.wait[cid]
 	if ret == nil {
@@ -323,6 +365,8 @@ func (sc *ShardCtrler) applyMsg(msg *raft.ApplyMsg) {
 				success = sc.applyMove(&op)
 			case QUERY:
 				success = sc.applyQuery(&op)
+			case CREATE:
+				success = sc.applyCreate(&op)
 			}
 			if !success {
 				DPrintf("Unknown operation: %v\n", op)

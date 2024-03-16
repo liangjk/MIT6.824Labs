@@ -38,6 +38,31 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	return ck
 }
 
+func (ck *Clerk) Create(shard, num int) bool {
+	args := &CreateArgs{}
+	args.Shard = shard
+	args.Num = num
+	args.Cid = ck.cid
+	ck.seq++
+	args.Seq = ck.seq
+	serverCnt := len(ck.servers)
+	for {
+		// try each known server.
+		for i := 0; i < serverCnt; i++ {
+			var reply CreateReply
+			ok := ck.servers[ck.leader].Call("ShardCtrler.Create", args, &reply)
+			if ok && reply.Ok {
+				return reply.Create
+			}
+			ck.leader++
+			if ck.leader >= serverCnt {
+				ck.leader = 0
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 func (ck *Clerk) Query(num int) Config {
 	args := &QueryArgs{}
 	// Your code here.
@@ -45,7 +70,7 @@ func (ck *Clerk) Query(num int) Config {
 	args.Cid = ck.cid
 	ck.seq++
 	args.Seq = ck.seq
-		serverCnt := len(ck.servers)
+	serverCnt := len(ck.servers)
 	for {
 		// try each known server.
 		for i := 0; i < serverCnt; i++ {
@@ -70,7 +95,7 @@ func (ck *Clerk) Join(servers map[int][]string) {
 	args.Cid = ck.cid
 	ck.seq++
 	args.Seq = ck.seq
-		serverCnt := len(ck.servers)
+	serverCnt := len(ck.servers)
 	for {
 		// try each known server.
 		for i := 0; i < serverCnt; i++ {

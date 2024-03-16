@@ -56,12 +56,12 @@ type GetReply struct {
 	Value string
 }
 
-type SendShardArgs struct {
+type InstallShardArgs struct {
 	Shard, Gid int
 	Seq        int64
 	Data       ShardData
 }
 
-type SendShardReply struct {
+type InstallShardReply struct {
 	Err ErrCode
 }

@@ -61,3 +61,13 @@ type QueryReply struct {
 	Ok     bool
 	Config Config
 }
+
+type CreateArgs struct {
+	Shard, Num int
+	Cid        int32
+	Seq        int64
+}
+
+type CreateReply struct {
+	Ok, Create bool
+}
