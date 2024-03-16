@@ -51,8 +51,6 @@ type ShardKV struct {
 	seq      [shardctrler.NShards]int64
 
 	cfgclerk, crtclerk *shardctrler.Clerk
-	cmu                sync.Mutex
-	config             shardctrler.Config
 
 	shardmu [shardctrler.NShards]sync.Mutex
 	kvs     [shardctrler.NShards]*ShardData

@@ -50,13 +50,7 @@ func (kv *ShardKV) ctrlerTicker() {
 			return
 		default:
 		}
-		cfg := kv.cfgclerk.Query(-1)
-		kv.cmu.Lock()
-		upd := cfg.Num > kv.config.Num
-		kv.cmu.Unlock()
-		if upd {
-			kv.rf.Start(cfg)
-		}
+		kv.rf.Start(kv.cfgclerk.Query(-1))
 		time.Sleep(d)
 	}
 }

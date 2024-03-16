@@ -16,9 +16,6 @@ func (kv *ShardKV) removeShardL(shard int) {
 }
 
 func (kv *ShardKV) applyConfig(cfg *shardctrler.Config) {
-	kv.cmu.Lock()
-	kv.config = *cfg
-	kv.cmu.Unlock()
 	for i, gid := range cfg.Shards {
 		kv.shardmu[i].Lock()
 		sdd := kv.kvs[i]
@@ -67,7 +64,9 @@ func (kv *ShardKV) applyMsg(msg *raft.ApplyMsg) {
 		return
 	}
 	if msg.SnapshotValid {
-		kv.applySnapshot(msg.Snapshot)
+		if !kv.applySnapshot(msg.Snapshot) {
+			DPrintf("Unable to decode snapshot:%v\n", msg.Snapshot)
+		}
 		return
 	}
 	DPrintf("Unknown Message:%v\n", *msg)

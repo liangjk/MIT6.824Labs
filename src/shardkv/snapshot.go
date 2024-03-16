@@ -11,7 +11,6 @@ import (
 func (kv *ShardKV) snapshot(index int) {
 	buf := new(bytes.Buffer)
 	encoder := labgob.NewEncoder(buf)
-	encoder.Encode(kv.config)
 	encoder.Encode(kv.tmseq)
 	encoder.Encode(kv.seq)
 	list := make([]int, 0, shardctrler.NShards)
@@ -47,16 +46,12 @@ func (kv *ShardKV) applySnapshot(snapshot []byte) bool {
 	}
 	buf := bytes.NewBuffer(snapshot)
 	decoder := labgob.NewDecoder(buf)
-	var cfg shardctrler.Config
 	var tmseq [shardctrler.NShards]map[int]int64
 	var seq [shardctrler.NShards]int64
 
 	var list []int
 	var kvs [shardctrler.NShards]*ShardData
 	var sdkvs [shardctrler.NShards]*SendData
-	if decoder.Decode(&cfg) != nil {
-		return false
-	}
 	if decoder.Decode(&tmseq) != nil {
 		return false
 	}
@@ -84,10 +79,6 @@ func (kv *ShardKV) applySnapshot(snapshot []byte) bool {
 		}
 		sdkvs[sd] = &sdd
 	}
-
-	kv.cmu.Lock()
-	kv.config = cfg
-	kv.cmu.Unlock()
 
 	for i := 0; i < shardctrler.NShards; i++ {
 		kv.seq[i] = seq[i]
