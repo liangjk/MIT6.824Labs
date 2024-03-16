@@ -30,38 +30,34 @@ func (kv *ShardKV) checkTerm(term int32) {
 
 func (kv *ShardKV) leaderChecker() {
 	const d = time.Millisecond * leaderMs
-	timer := time.NewTimer(d)
 	for {
 		select {
 		case <-kv.doneCh:
-			timer.Stop()
 			return
-		case <-timer.C:
-			term, _ := kv.rf.GetState()
-			kv.checkTerm(int32(term))
+		default:
 		}
-		timer.Reset(d)
+		term, _ := kv.rf.GetState()
+		kv.checkTerm(int32(term))
+		time.Sleep(d)
 	}
 }
 
 func (kv *ShardKV) ctrlerTicker() {
 	const d = time.Millisecond * ctrlerMs
-	timer := time.NewTimer(d)
 	for {
 		select {
 		case <-kv.doneCh:
-			timer.Stop()
 			return
-		case <-timer.C:
-			cfg := kv.cfgclerk.Query(-1)
-			kv.cmu.Lock()
-			upd := cfg.Num > kv.config.Num
-			kv.cmu.Unlock()
-			if upd {
-				kv.rf.Start(cfg)
-			}
+		default:
 		}
-		timer.Reset(d)
+		cfg := kv.cfgclerk.Query(-1)
+		kv.cmu.Lock()
+		upd := cfg.Num > kv.config.Num
+		kv.cmu.Unlock()
+		if upd {
+			kv.rf.Start(cfg)
+		}
+		time.Sleep(d)
 	}
 }
 
@@ -75,12 +71,11 @@ func (kv *ShardKV) sender() {
 		if waiting {
 			d = time.Millisecond * sendShortMs
 		}
-		timer := time.NewTimer(d)
 		select {
 		case <-kv.doneCh:
-			timer.Stop()
 			return
-		case <-timer.C:
+		default:
 		}
+		time.Sleep(d)
 	}
 }

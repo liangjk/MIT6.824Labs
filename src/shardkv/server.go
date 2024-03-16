@@ -147,9 +147,9 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister,
 		kv.tmwait[i] = sync.NewCond(&kv.tmmu[i])
 	}
 
-	if !kv.applySnapshot(persister.ReadSnapshot()){
-		for i:=range kv.tmseq{
-			kv.tmseq[i]=make(map[int]int64)
+	if !kv.applySnapshot(persister.ReadSnapshot()) {
+		for i := range kv.tmseq {
+			kv.tmseq[i] = make(map[int]int64)
 		}
 	}
 
