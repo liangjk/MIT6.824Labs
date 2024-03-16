@@ -26,11 +26,11 @@ func (kv *ShardKV) snapshot(index int) {
 	}
 	list = make([]int, 0, shardctrler.NShards)
 	sdlist := make([]*SendData, 0, shardctrler.NShards)
-	for i, sdd := range kv.sdkvs {
+	for i := 0; i < shardctrler.NShards; i++ {
 		kv.sdmu[i].Lock()
-		if sdd != nil {
+		if kv.sdkvs[i] != nil {
 			list = append(list, i)
-			sdlist = append(sdlist, sdd)
+			sdlist = append(sdlist, kv.sdkvs[i])
 		}
 		kv.sdmu[i].Unlock()
 	}

@@ -95,7 +95,7 @@ func (kv *ShardKV) sendShard(shard int) bool {
 			switch reply.Err {
 			case OK:
 				kv.sdmu[shard].Lock()
-				if kv.sdkvs[shard].Seq == args.Seq {
+				if kv.sdkvs[shard] != nil && kv.sdkvs[shard].Seq == args.Seq {
 					kv.sdkvs[shard] = nil
 				}
 				kv.sdmu[shard].Unlock()
