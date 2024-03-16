@@ -63,6 +63,8 @@ func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 	return ck
 }
 
+const retryIntv = 100
+
 // fetch the current value for a key.
 // returns "" if the key does not exist.
 // keeps trying forever in the face of all other errors.
@@ -94,7 +96,7 @@ func (ck *Clerk) Get(key string) string {
 				}
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(time.Millisecond * retryIntv)
 		// ask controller for the latest configuration.
 		ck.config = ck.sm.Query(-1)
 		ck.leader[shard] = 0
@@ -129,7 +131,7 @@ func (ck *Clerk) PutAppend(key string, value string, op OpCode) {
 				}
 			}
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(time.Millisecond * retryIntv)
 		// ask controller for the latest configuration.
 		ck.config = ck.sm.Query(-1)
 		ck.leader[shard] = 0
