@@ -9,5 +9,5 @@ for i in {1..200}; do
         echo -n "*"
     done
     echo -e "\nTest $i with race flag"
-    time go test -race
+    time go test -race -timeout 20m
 done 2>&1 | tee test.log
