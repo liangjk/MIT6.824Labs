@@ -34,7 +34,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	return ck
 }
 
-const electionWaitSec = 3
+const electionWaitSec = 1
 
 // fetch the current value for a key.
 // returns "" if the key does not exist.
