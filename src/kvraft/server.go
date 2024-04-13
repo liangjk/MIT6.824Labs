@@ -10,6 +10,9 @@ import (
 	"6.5840/labgob"
 	"6.5840/labrpc"
 	"6.5840/raft"
+	"log"
+	"sync"
+	"sync/atomic"
 )
 
 const Debug = true
@@ -33,6 +36,7 @@ const (
 	tickerIntv        = 1
 	SnapshotThreshold = 0.9
 )
+
 
 type Op struct {
 	// Your definitions here.
@@ -293,6 +297,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	// call labgob.Register on structures you want
 	// Go's RPC library to marshall/unmarshall.
 	labgob.Register(Op{})
+
 
 	kv := new(KVServer)
 	kv.me = me
